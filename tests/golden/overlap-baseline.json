@@ -1,0 +1,164 @@
+[
+  {
+    "name": "LLaMA 3.1 405B × 16384 H100",
+    "mfu": 0.4112678237398427,
+    "totalTimeMs": 6130.548872715715,
+    "communication": 1231.203592812577,
+    "overlap": 769.8289234125,
+    "communicationExposedMs": 461.374669400077,
+    "overlapHiddenFraction": 0.6252653321567175
+  },
+  {
+    "name": "GPT-3 175B × 1024 A100",
+    "mfu": 0.4323888412004773,
+    "totalTimeMs": 23936.97089047383,
+    "communication": 237.08254507457616,
+    "overlap": 49.049062540273965,
+    "communicationExposedMs": 188.0334825343022,
+    "overlapHiddenFraction": 0.20688601315986885
+  },
+  {
+    "name": "IBM FSDP 7B × 128 A100",
+    "mfu": 0.569929483414486,
+    "totalTimeMs": 1862.6157450067492,
+    "communication": 225.430467552,
+    "overlap": 218.38576544100002,
+    "communicationExposedMs": 7.044702110999992,
+    "overlapHiddenFraction": 0.96875
+  },
+  {
+    "name": "DeepSeek V3 × 2048 H800",
+    "mfu": 0.44710488696327394,
+    "totalTimeMs": 8348.344789490022,
+    "communication": 842.0699879789661,
+    "overlap": 499.55270700281346,
+    "communicationExposedMs": 1861.8329461034386,
+    "overlapHiddenFraction": 0.21155066574817366
+  },
+  {
+    "name": "Nemotron-4 340B × 6144 H100",
+    "mfu": 0.41227328786220024,
+    "totalTimeMs": 2569.3974209802022,
+    "communication": 945.2084938968698,
+    "overlap": 550.7588208149999,
+    "communicationExposedMs": 394.44967308186983,
+    "overlapHiddenFraction": 0.5826850101022181
+  },
+  {
+    "name": "LLaMA2 7B FSDP single-node H100",
+    "mfu": 0.41920360329060163,
+    "totalTimeMs": 399.43645058754447,
+    "communication": 86.95633373866669,
+    "overlap": 84.23894830933335,
+    "communicationExposedMs": 2.7173854293333335,
+    "overlapHiddenFraction": 0.96875
+  },
+  {
+    "name": "LLaMA2 7B DDP single-node H100",
+    "mfu": 0.3563720002272644,
+    "totalTimeMs": 469.8607052886432,
+    "communication": 65.59187908266667,
+    "overlap": 62.85159613432414,
+    "communicationExposedMs": 2.740282948342525,
+    "overlapHiddenFraction": 0.9582222222222221
+  },
+  {
+    "name": "LLaMA3 8B ZeRO-1 single-node H100",
+    "mfu": 0.4079910205448976,
+    "totalTimeMs": 489.0958482897713,
+    "communication": 115.643657472,
+    "overlap": 74.92084165178127,
+    "communicationExposedMs": 40.72281582021873,
+    "overlapHiddenFraction": 0.6478594960551238
+  },
+  {
+    "name": "LLaMA3 8B ZeRO-3 single-node H100",
+    "mfu": 0.4418577451088072,
+    "totalTimeMs": 451.6085018242193,
+    "communication": 103.53501934933335,
+    "overlap": 100.29954999466669,
+    "communicationExposedMs": 3.2354693546666624,
+    "overlapHiddenFraction": 0.96875
+  },
+  {
+    "name": "LLaMA2 7B TP=4 single-node H100",
+    "mfu": 0.37560054335569565,
+    "totalTimeMs": 445.806595155363,
+    "communication": 62.242065503974636,
+    "overlap": 43.51893418666667,
+    "communicationExposedMs": 18.723131317307967,
+    "overlapHiddenFraction": 0.6991884641727972
+  },
+  {
+    "name": "LLaMA2 7B FSDP-TP-PP(1,1) single-node H100",
+    "mfu": 0.4108910569812273,
+    "totalTimeMs": 407.5172640702111,
+    "communication": 86.95633373866669,
+    "overlap": 76.15813482666667,
+    "communicationExposedMs": 10.798198912000018,
+    "overlapHiddenFraction": 0.8758204440351375
+  },
+  {
+    "name": "LLaMA2 7B FSDP-TP-PP(4,1) single-node H100",
+    "mfu": 0.37560054335569565,
+    "totalTimeMs": 445.806595155363,
+    "communication": 62.242065503974636,
+    "overlap": 43.51893418666667,
+    "communicationExposedMs": 18.723131317307967,
+    "overlapHiddenFraction": 0.6991884641727972
+  },
+  {
+    "name": "LLaMA2 70B × 2048 A100 FSDP-TP",
+    "mfu": 0.4485036833237159,
+    "totalTimeMs": 3028.5356180688,
+    "communication": 826.191734748394,
+    "overlap": 689.9615885655,
+    "communicationExposedMs": 136.23014618289392,
+    "overlapHiddenFraction": 0.8351107370683379
+  },
+  {
+    "name": "LLaMA3 8B FSDP 4-node H100",
+    "mfu": 0.4396417070322534,
+    "totalTimeMs": 453.88485918461066,
+    "communication": 133.158707136,
+    "overlap": 128.997497538,
+    "communicationExposedMs": 4.161209597999999,
+    "overlapHiddenFraction": 0.96875
+  },
+  {
+    "name": "LLaMA2 7B FSDP 8-node A100",
+    "mfu": 0.44300220918392114,
+    "totalTimeMs": 2396.285181753252,
+    "communication": 223.69321977600003,
+    "overlap": 216.70280665800004,
+    "communicationExposedMs": 6.990413117999992,
+    "overlapHiddenFraction": 0.96875
+  },
+  {
+    "name": "Mixtral 8x7B FSDP single-node H100",
+    "mfu": 0.388663859922243,
+    "totalTimeMs": 823.4819605035613,
+    "communication": 599.832506368,
+    "overlap": 563.7101508048073,
+    "communicationExposedMs": 36.12235556319274,
+    "overlapHiddenFraction": 0.9397792630780974
+  },
+  {
+    "name": "Mixtral 8x22B EP=4 × 128 H100",
+    "mfu": 0.43901511755559053,
+    "totalTimeMs": 4433.272230831382,
+    "communication": 761.5978807441419,
+    "overlap": 554.98397184,
+    "communicationExposedMs": 538.3419071586874,
+    "overlapHiddenFraction": 0.5076107522016007
+  },
+  {
+    "name": "LLaMA2 70B PP=8 FSDP-TP-PP × 32 H100",
+    "mfu": 0.41216358207721315,
+    "totalTimeMs": 66537.63500183825,
+    "communication": 13886.7685692973,
+    "overlap": 11174.217007103998,
+    "communicationExposedMs": 2712.551562193301,
+    "overlapHiddenFraction": 0.8046664673169129
+  }
+]

@@ -1,0 +1,651 @@
+@import "tailwindcss";
+
+:root {
+  /* Light pastel background colors */
+  --color-bg-primary: #f8f9fc;
+  --color-bg-secondary: #f0f4f8;
+  --color-bg-card: #ffffff;
+  --color-bg-hover: #e8eef4;
+
+  /* Primary colors - soft sage and mint */
+  --color-primary: #6ba89a;
+  --color-primary-dark: #4a8a7a;
+  --color-primary-light: #a8d4c8;
+  --color-secondary: #8a9cb4;
+  --color-accent: #c49494;
+
+  /* Text colors for light theme */
+  --color-text-primary: #1a2b3c;
+  --color-text-secondary: #4a5568;
+  --color-text-muted: #718096;
+
+  /* Memory type colors - soft pastels */
+  --color-memory-params: #7ab8e0;
+  --color-memory-gradients: #e09090;
+  --color-memory-optimizer: #e0c080;
+  --color-memory-activations: #80d0a0;
+  --color-memory-reserved: #a0a0b0;
+
+  /* GPU status colors - muted tones */
+  --color-gpu-idle: #c0c8d0;
+  --color-gpu-compute: #70c4a0;
+  --color-gpu-memory: #e0c090;
+  --color-gpu-communicate: #a090d0;
+
+  /* Strategy colors - pastel palette */
+  --color-dp: #80b8e0;
+  --color-tp: #b090d0;
+  --color-pp: #e0c090;
+  --color-ep: #70c8c8;
+
+  /* Phase colors for training/inference */
+  --color-training: #b090c0;
+  --color-inference: #70c8b8;
+  --color-prefill: #b090d0;
+  --color-decode: #70b8c8;
+
+  /* Status colors */
+  --color-success: #70c8a0;
+  --color-warning: #e0c080;
+  --color-error: #e09090;
+  --color-info: #80b8e0;
+
+  /* Speculative decoding */
+  --color-accepted: #90e0a8;
+  --color-rejected: #e09090;
+  --color-pending: #e0c080;
+
+  /* Border colors */
+  --color-border: #e2e8f0;
+  --color-border-light: #edf2f7;
+
+  /* Chart colors */
+  --color-chart-grid: rgba(0, 0, 0, 0.08);
+  --color-chart-axis: rgba(0, 0, 0, 0.2);
+
+  /* Button/tab accent — teal (light theme) */
+  --color-btn: #0d9488;
+  --color-btn-hover: #0f766e;
+  --color-btn-text: #0d9488;
+  --color-btn-ring: rgba(20, 184, 166, 0.3);
+}
+
+[data-theme="dark"] {
+  /* Dark backgrounds — warm blue-gray, not pure black */
+  --color-bg-primary: #0f1117;
+  --color-bg-secondary: #1a1d27;
+  --color-bg-card: #171921;
+  --color-bg-hover: #22252f;
+
+  /* Primary colors — slightly brightened sage for dark-bg contrast */
+  --color-primary: #7bbdad;
+  --color-primary-dark: #5a9e8e;
+  --color-primary-light: #a8d4c8;
+  --color-secondary: #8a9cb4;
+  --color-accent: #d4a0a0;
+
+  /* Text colors for dark theme */
+  --color-text-primary: #e2e6ed;
+  --color-text-secondary: #a0a8b8;
+  --color-text-muted: #6b7280;
+
+  /* Memory type colors — boosted for dark backgrounds */
+  --color-memory-params: #5ca8d0;
+  --color-memory-gradients: #d07878;
+  --color-memory-optimizer: #d0a860;
+  --color-memory-activations: #60c080;
+  --color-memory-reserved: #808898;
+
+  /* GPU status colors */
+  --color-gpu-idle: #404858;
+  --color-gpu-compute: #50b488;
+  --color-gpu-memory: #d0a868;
+  --color-gpu-communicate: #9080c0;
+
+  /* Strategy colors */
+  --color-dp: #60a0d0;
+  --color-tp: #a080c0;
+  --color-pp: #d0a868;
+  --color-ep: #50b8b8;
+
+  /* Phase colors */
+  --color-training: #a080b0;
+  --color-inference: #50b8a8;
+  --color-prefill: #a080c0;
+  --color-decode: #50a8b8;
+
+  /* Status colors */
+  --color-success: #50b888;
+  --color-warning: #d0a860;
+  --color-error: #d07878;
+  --color-info: #60a0d0;
+
+  /* Speculative decoding */
+  --color-accepted: #70d090;
+  --color-rejected: #d07878;
+  --color-pending: #d0a860;
+
+  /* Border colors — subtle, not harsh */
+  --color-border: #2a2d38;
+  --color-border-light: #22252f;
+
+  /* Chart colors */
+  --color-chart-grid: rgba(255, 255, 255, 0.06);
+  --color-chart-axis: rgba(255, 255, 255, 0.15);
+
+  /* Button/tab accent — teal (dark theme) */
+  --color-btn: #0d9488;
+  --color-btn-hover: #0f766e;
+  --color-btn-text: #2dd4bf;
+  --color-btn-ring: rgba(20, 184, 166, 0.3);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Ensure all interactive elements have pointer cursor */
+button, [role="button"], a, select, input[type="checkbox"], input[type="radio"], label:has(input) {
+  cursor: pointer;
+}
+
+html[data-theme="light"], html:not([data-theme]) {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  @apply font-sans antialiased;
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #c4cdd8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #a8b4c4;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background-color: #3a3d48;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background-color: #4a4d58;
+}
+
+/* Firefox / standards-based scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c4cdd8 var(--color-bg-secondary);
+}
+
+[data-theme="dark"] * {
+  scrollbar-color: #3a3d48 var(--color-bg-secondary);
+}
+
+/* Glow effects - softer for light mode */
+.glow-primary {
+  box-shadow: 0 0 20px rgba(107, 168, 154, 0.2);
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px rgba(196, 148, 148, 0.2);
+}
+
+.glow-success {
+  box-shadow: 0 0 20px rgba(112, 200, 160, 0.2);
+}
+
+.glow-training {
+  box-shadow: 0 0 20px rgba(176, 144, 192, 0.2);
+}
+
+.glow-inference {
+  box-shadow: 0 0 20px rgba(112, 200, 184, 0.2);
+}
+
+/* Animation keyframes */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes flow {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; transform: translateY(-5px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up-sm {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out both;
+}
+
+.animate-slide-up-sm {
+  animation: slide-up-sm 0.3s ease-out both;
+}
+
+@keyframes progress-bar {
+  0% { width: 0%; margin-left: 0%; }
+  50% { width: 60%; margin-left: 20%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+
+.animate-progress-bar {
+  animation: progress-bar 1.5s ease-in-out infinite;
+}
+
+@keyframes run-shade {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-run-shade {
+  animation: run-shade 0.5s ease-in-out forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-flow {
+  animation: flow 1.5s linear infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+/* Card styling */
+.card {
+  background-color: var(--color-bg-card);
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.card-hover:hover {
+  background-color: var(--color-bg-hover);
+  border-color: #d0d8e4;
+}
+
+[data-theme="dark"] .card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .card-hover:hover {
+  border-color: #363940;
+}
+
+/* Metric display */
+.metric-value {
+  @apply text-2xl font-semibold;
+  color: var(--color-primary);
+}
+
+.metric-label {
+  @apply text-sm;
+  color: var(--color-text-muted);
+}
+
+/* Memory bar colors */
+.memory-params { background-color: var(--color-memory-params); }
+.memory-gradients { background-color: var(--color-memory-gradients); }
+.memory-optimizer { background-color: var(--color-memory-optimizer); }
+.memory-activations { background-color: var(--color-memory-activations); }
+.memory-reserved { background-color: var(--color-memory-reserved); }
+
+/* KV cache specific */
+.memory-weights { background-color: var(--color-memory-params); }
+.memory-kv-cache { background-color: var(--color-memory-optimizer); }
+.memory-overhead { background-color: var(--color-memory-reserved); }
+
+/* GPU status indicators */
+.gpu-idle { background-color: var(--color-gpu-idle); }
+.gpu-compute { background-color: var(--color-gpu-compute); }
+.gpu-memory { background-color: var(--color-gpu-memory); }
+.gpu-communicate { background-color: var(--color-gpu-communicate); }
+
+/* Strategy badges */
+.badge-dp { background-color: var(--color-dp); }
+.badge-tp { background-color: var(--color-tp); }
+.badge-pp { background-color: var(--color-pp); }
+.badge-ep { background-color: var(--color-ep); }
+
+/* Mode indicators */
+.mode-training {
+  background-color: var(--color-training);
+  color: white;
+}
+
+.mode-inference {
+  background-color: var(--color-inference);
+  color: white;
+}
+
+/* Phase colors for visualization */
+.phase-prefill { background-color: var(--color-prefill); }
+.phase-decode { background-color: var(--color-decode); }
+.phase-forward { background-color: var(--color-gpu-compute); }
+.phase-backward { background-color: var(--color-memory-gradients); }
+.phase-optimizer { background-color: var(--color-memory-optimizer); }
+
+/* Speculative decoding status */
+.token-accepted { background-color: var(--color-accepted); }
+.token-rejected { background-color: var(--color-rejected); }
+.token-pending { background-color: var(--color-pending); }
+
+/* Tooltip styling */
+.tooltip {
+  background-color: var(--color-bg-card);
+  color: var(--color-text-primary);
+  @apply px-3 py-2 rounded-lg text-sm;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border);
+}
+
+[data-theme="dark"] .tooltip {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Button styles */
+.btn-primary {
+  background-color: var(--color-primary);
+  @apply text-white font-medium px-4 py-2 rounded-lg transition-colors;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark);
+}
+
+.btn-secondary {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  @apply font-medium px-4 py-2 rounded-lg transition-colors;
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-bg-hover);
+}
+
+/* Accent colors for interactive controls (buttons, tabs, toggles) */
+.bg-accent { background-color: var(--color-btn); }
+.bg-accent:hover, .hover\:bg-accent:hover { background-color: var(--color-btn-hover); }
+.text-accent { color: var(--color-btn-text); }
+.ring-accent { --tw-ring-color: var(--color-btn-ring); }
+
+/* Input styles */
+.input {
+  background-color: var(--color-bg-card);
+  color: var(--color-text-primary);
+  @apply border rounded-lg px-3 py-2;
+  border-color: var(--color-border);
+}
+
+.input:focus {
+  @apply outline-none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(107, 168, 154, 0.15);
+}
+
+/* Select styles */
+.select {
+  background-color: var(--color-bg-card);
+  color: var(--color-text-primary);
+  @apply border rounded-lg px-3 py-2;
+  border-color: var(--color-border);
+}
+
+.select:focus {
+  @apply outline-none;
+  border-color: var(--color-primary);
+}
+
+/* Slider styles */
+input[type="range"] {
+  @apply w-full h-2 rounded-lg appearance-none cursor-pointer;
+  background-color: var(--color-bg-secondary);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 rounded-full;
+  background-color: var(--color-primary);
+}
+
+input[type="range"]::-moz-range-thumb {
+  @apply w-4 h-4 rounded-full border-none;
+  background-color: var(--color-primary);
+}
+
+input[type="range"]::-moz-range-track {
+  @apply h-2 rounded-lg;
+  background-color: var(--color-bg-secondary);
+}
+
+/* Toggle switch */
+.toggle {
+  @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors;
+  background-color: var(--color-bg-secondary);
+}
+
+.toggle-active {
+  background-color: var(--color-primary);
+}
+
+.toggle-thumb {
+  @apply inline-block h-4 w-4 transform rounded-full bg-white transition-transform;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Progress bar */
+.progress-bar {
+  @apply h-2 rounded-full overflow-hidden;
+  background-color: var(--color-bg-secondary);
+}
+
+.progress-fill {
+  @apply h-full transition-all duration-300;
+  background-color: var(--color-primary);
+}
+
+/* Chart grid lines */
+.chart-grid {
+  stroke: var(--color-chart-grid);
+}
+
+.chart-axis {
+  stroke: var(--color-chart-axis);
+}
+
+/* Visualization container */
+.vis-container {
+  background-color: var(--color-bg-card);
+  @apply rounded-xl p-4;
+  border: 1px solid var(--color-border);
+}
+
+/* Timeline styles */
+.timeline-track {
+  @apply h-1 rounded-full;
+  background-color: var(--color-bg-secondary);
+}
+
+.timeline-progress {
+  @apply h-full rounded-full;
+  background-color: var(--color-primary);
+}
+
+.timeline-marker {
+  @apply w-3 h-3 rounded-full border-2;
+  border-color: white;
+  background-color: var(--color-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .timeline-marker {
+  border-color: var(--color-bg-card);
+}
+
+/* Dark theme: ring offset fix */
+[data-theme="dark"] {
+  .focus\:ring-offset-gray-900:focus { --tw-ring-offset-color: var(--color-bg-primary) !important; }
+}
+
+/* =========================================================================
+   Light theme: Override Tailwind dark classes so they render as light colors.
+   In dark mode this entire block is skipped — Tailwind renders natively.
+   ========================================================================= */
+[data-theme="light"] {
+
+.bg-gray-950 { background-color: var(--color-bg-primary) !important; }
+.bg-gray-900 { background-color: var(--color-bg-primary) !important; }
+.bg-gray-900\/30 { background-color: rgba(248, 249, 252, 0.9) !important; }
+.bg-gray-900\/50 { background-color: rgba(255, 255, 255, 0.9) !important; }
+.bg-gray-800 { background-color: var(--color-bg-secondary) !important; }
+.bg-gray-800\/50 { background-color: rgba(240, 244, 248, 0.8) !important; }
+.bg-gray-700 { background-color: #e2e8f0 !important; }
+
+.border-gray-800 { border-color: var(--color-border) !important; }
+.border-gray-700 { border-color: var(--color-border-light) !important; }
+
+.text-white { color: var(--color-text-primary) !important; }
+.bg-accent, .bg-accent .text-white,
+.bg-yellow-600, .bg-yellow-600 .text-white { color: #ffffff !important; }
+.text-gray-100 { color: var(--color-text-primary) !important; }
+.text-gray-200 { color: var(--color-text-primary) !important; }
+.text-gray-300 { color: var(--color-text-secondary) !important; }
+.text-gray-400 { color: var(--color-text-muted) !important; }
+.text-gray-500 { color: #a0aec0 !important; }
+.text-gray-600 { color: #718096 !important; }
+
+/* Hover states for light theme */
+.hover\:text-white:hover { color: var(--color-text-primary) !important; }
+.hover\:bg-gray-800\/50:hover { background-color: var(--color-bg-hover) !important; }
+.hover\:bg-gray-800:hover { background-color: var(--color-bg-hover) !important; }
+.hover\:bg-gray-700:hover { background-color: #e2e8f0 !important; }
+.hover\:bg-gray-100:hover { background-color: #f0f4f8 !important; }
+.hover\:text-gray-700:hover { color: var(--color-text-primary) !important; }
+.hover\:text-gray-300:hover { color: var(--color-text-secondary) !important; }
+
+/* Metric card colors — softer for light backgrounds (same hues, lower saturation) */
+.text-yellow-400 { color: #c9a020 !important; }
+.text-green-400 { color: #40a070 !important; }
+.text-blue-400 { color: #4090c0 !important; }
+.text-purple-400 { color: #8060b0 !important; }
+.text-cyan-400 { color: #30a0b0 !important; }
+.text-orange-400 { color: #ea580c !important; }
+.text-red-400 { color: #c06060 !important; }
+
+/* Background tints for metric icons */
+.bg-yellow-500\/10 { background-color: rgba(201, 160, 32, 0.1) !important; }
+.bg-green-500\/10 { background-color: rgba(64, 160, 112, 0.1) !important; }
+.bg-blue-500\/10 { background-color: rgba(64, 144, 192, 0.1) !important; }
+.bg-purple-500\/10 { background-color: rgba(128, 96, 176, 0.1) !important; }
+.bg-cyan-500\/10 { background-color: rgba(48, 160, 176, 0.1) !important; }
+.bg-orange-500\/10 { background-color: rgba(192, 112, 48, 0.1) !important; }
+.bg-red-500\/10 { background-color: rgba(192, 96, 96, 0.1) !important; }
+
+/* Progress bars — pastel versions */
+.bg-blue-500 { background-color: #80b8e0 !important; }
+.bg-red-500 { background-color: #e09090 !important; }
+.bg-orange-500 { background-color: #e0b070 !important; }
+.bg-green-500 { background-color: #80d0a0 !important; }
+.bg-purple-500 { background-color: #b090d0 !important; }
+.bg-cyan-500 { background-color: #70c8d0 !important; }
+
+/* Status badges */
+.bg-green-500\/20 { background-color: rgba(128, 208, 160, 0.2) !important; }
+.bg-orange-500\/20 { background-color: rgba(224, 176, 112, 0.2) !important; }
+.bg-purple-500\/20 { background-color: rgba(176, 144, 208, 0.2) !important; }
+.bg-red-500\/20 { background-color: rgba(224, 144, 144, 0.2) !important; }
+
+/* Warning/error sections */
+.bg-yellow-900\/20 { background-color: rgba(224, 192, 128, 0.15) !important; }
+.border-yellow-700\/50 { border-color: rgba(180, 160, 80, 0.3) !important; }
+.text-yellow-300 { color: #806820 !important; }
+.text-yellow-500 { color: #a08020 !important; }
+
+/* Disabled states */
+.disabled\:bg-gray-700:disabled { background-color: #d0d8e0 !important; }
+
+/* TP group borders — emerald in dark, gray in light */
+.border-emerald-400\/60 { border-color: rgba(156, 163, 175, 0.5) !important; }
+
+} /* end [data-theme="light"] */
+
+/* Auto-optimizer result banner */
+.opt-banner {
+  background-color: rgba(120, 53, 15, 0.3);
+}
+.opt-banner-icon { color: #fbbf24; }
+.opt-banner-title { color: #fde68a; }
+.opt-banner-metric { color: #fcd34d; }
+
+[data-theme="light"] .opt-banner {
+  background-color: rgba(255, 237, 213, 0.7) !important;
+}
+[data-theme="light"] .opt-banner-icon { color: #b45309 !important; }
+[data-theme="light"] .opt-banner-title { color: #92400e !important; }
+[data-theme="light"] .opt-banner .text-gray-300 { color: #78350f !important; }
+[data-theme="light"] .opt-banner-metric { color: #a16207 !important; }
+
+/* Small-screen warning banner */
+.small-screen-banner {
+  background-color: rgba(120, 53, 15, 0.35);
+  border-color: rgba(180, 120, 40, 0.4);
+  color: #fde68a;
+}
+.small-screen-dismiss:hover {
+  background-color: rgba(120, 53, 15, 0.5);
+}
+
+[data-theme="light"] .small-screen-banner {
+  background-color: rgba(255, 237, 213, 0.8) !important;
+  border-color: rgba(180, 140, 60, 0.3) !important;
+  color: #78350f !important;
+}
+[data-theme="light"] .small-screen-dismiss:hover {
+  background-color: rgba(180, 140, 60, 0.15) !important;
+}
+
+/* Suppress transitions during theme switch to prevent color flashes */
+.no-transitions * {
+  transition: none !important;
+}

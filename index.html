@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/favicon-192.png" />
+
+    <meta property="og:image" content="https://simulator.zhebrak.io/og-image.png" />
+    <meta property="og:title" content="LLM Cluster Simulator — Plan Distributed Training & Inference" />
+    <meta property="og:description" content="Simulate distributed LLM training and inference across 70+ models and 25+ GPUs. MFU, memory, throughput, cost — validated against published benchmarks. Runs in browser." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://simulator.zhebrak.io/" />
+    <meta name="twitter:card" content="summary_large_image" />    
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <title>LLM Cluster Simulator</title>
+    <script>
+      (function(){var t=localStorage.getItem('llm-sim-theme');if(!t)t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t)})();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

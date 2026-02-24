@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2d3a4a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e2a38;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="die" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3d6b6e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4a7c7e;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="96" ry="96" fill="url(#bg)"/>
+  
+  <!-- PCB/substrate -->
+  <rect x="72" y="108" width="368" height="296" rx="24" ry="24" fill="none" stroke="#6aaeae" stroke-width="14"/>
+  
+  <!-- HBM stacks - left -->
+  <rect x="104" y="152" width="60" height="80" rx="8" fill="#6aaeae" opacity="0.4"/>
+  <rect x="104" y="280" width="60" height="80" rx="8" fill="#6aaeae" opacity="0.4"/>
+  
+  <!-- HBM stacks - right -->
+  <rect x="348" y="152" width="60" height="80" rx="8" fill="#6aaeae" opacity="0.4"/>
+  <rect x="348" y="280" width="60" height="80" rx="8" fill="#6aaeae" opacity="0.4"/>
+  
+  <!-- GPU die (center, tall rectangle) -->
+  <rect x="186" y="144" width="140" height="224" rx="12" ry="12" fill="url(#die)"/>
+  
+  <!-- Compute grid on die (3x4 SMs, centered) -->
+  <!-- Die center x=256, 3 cols: 32w + 8gap = total 112w, start at 200 -->
+  <!-- Die center y=256, 4 rows: 32h + 16gap = total 176h, start at 168 -->
+  <g fill="#8ecece" opacity="0.75">
+    <!-- Row 1 -->
+    <rect x="200" y="168" width="32" height="32" rx="4"/>
+    <rect x="240" y="168" width="32" height="32" rx="4"/>
+    <rect x="280" y="168" width="32" height="32" rx="4"/>
+    <!-- Row 2 -->
+    <rect x="200" y="216" width="32" height="32" rx="4"/>
+    <rect x="240" y="216" width="32" height="32" rx="4"/>
+    <rect x="280" y="216" width="32" height="32" rx="4"/>
+    <!-- Row 3 -->
+    <rect x="200" y="264" width="32" height="32" rx="4"/>
+    <rect x="240" y="264" width="32" height="32" rx="4"/>
+    <rect x="280" y="264" width="32" height="32" rx="4"/>
+    <!-- Row 4 -->
+    <rect x="200" y="312" width="32" height="32" rx="4"/>
+    <rect x="240" y="312" width="32" height="32" rx="4"/>
+    <rect x="280" y="312" width="32" height="32" rx="4"/>
+  </g>
+</svg>
