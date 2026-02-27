@@ -1,12 +1,19 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { AppShell } from './components/layout/index.ts';
 import { ResultsDashboard } from './components/visualization/index.ts';
-import { useConfigStore, useSimulationStore, findPresetBySlug } from './stores/index.ts';
+import { GameOverlay } from './components/game/index.ts';
+import { WelcomeModal } from './components/WelcomeModal.tsx';
+import { useConfigStore, useSimulationStore, useGameStore, findPresetBySlug } from './stores/index.ts';
 import { decodeShareURL } from './utils/share.ts';
 
 function App() {
   const { runSimulation } = useSimulationStore();
   const loadedFromShare = useRef(false);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('config') || params.has('preset') || params.has('learn')) return false;
+    return !localStorage.getItem('llm-sim-welcomed');
+  });
   const [presetError, setPresetError] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     const presetSlug = params.get('preset');
@@ -18,12 +25,21 @@ function App() {
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Ctrl+Shift+W - Reset welcome modal (dev testing)
+    if (e.ctrlKey && e.shiftKey && e.key === 'W') {
+      e.preventDefault();
+      localStorage.removeItem('llm-sim-welcomed');
+      window.location.reload();
+      return;
+    }
+
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
       if (e.shiftKey) {
-        // Ctrl+Shift+Enter - Auto-optimize
+        // Ctrl+Shift+Enter - Auto-optimize (disabled in learning mode)
         const mode = useConfigStore.getState().mode;
-        if (mode === 'training') {
+        const gameActive = useGameStore.getState().active;
+        if (mode === 'training' && !gameActive) {
           useSimulationStore.getState().autoOptimizeTraining();
         }
       } else {
@@ -53,6 +69,14 @@ function App() {
       history.replaceState({}, '', window.location.pathname + '#shared');
       useSimulationStore.getState().runSimulation();
       return;
+    }
+
+    if (params.has('learn')) {
+      history.replaceState({}, '', window.location.pathname + '#learn');
+      const game = useGameStore.getState();
+      if (!game.active) {
+        game.enter();
+      }
     }
 
     const presetSlug = params.get('preset');
@@ -93,12 +117,14 @@ function App() {
 
   return (
     <AppShell>
+      {showWelcome && <WelcomeModal onDismiss={() => setShowWelcome(false)} />}
       {presetError && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-sm text-gray-300 shadow-lg">
           <span>{presetError}</span>
           <button onClick={() => setPresetError(null)} className="text-gray-500 hover:text-gray-300 ml-1 cursor-pointer">&times;</button>
         </div>
       )}
+      <GameOverlay />
       <ResultsDashboard />
     </AppShell>
   );

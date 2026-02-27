@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { Github, HelpCircle, Moon, Sun, X } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip.tsx';
+import { GameModeButton } from '../game/GameModeButton.tsx';
 import { useTheme } from '../../hooks/useTheme';
 
 function HelpModal({ onClose }: { onClose: () => void }) {
@@ -118,6 +119,15 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             </ul>
           </section>
 
+          <section>
+            <h3 className="text-lg font-medium text-white mb-2">Learning Mode</h3>
+            <p className="text-gray-300">
+              Click <span className="text-green-400 font-medium">Learn</span> in the header to enter interactive challenges.
+              Configure training runs to hit target metrics — MFU, throughput, memory — across increasing difficulty levels.
+              Auto-optimize is disabled so you learn the trade-offs yourself.
+            </p>
+          </section>
+
         </div>
 
         <div className="mt-6 pt-4 border-t border-gray-800 text-xs text-gray-500">
@@ -155,14 +165,7 @@ export function Header() {
         </button>
 
         <div className="flex items-center gap-2">
-          <Tooltip text={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
-            <button
-              onClick={toggleTheme}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors cursor-pointer"
-            >
-              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-            </button>
-          </Tooltip>
+          <GameModeButton />
           <button
             onClick={() => setShowHelp(true)}
             className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors cursor-pointer"
@@ -179,6 +182,14 @@ export function Header() {
             <Github className="w-4 h-4" />
             <span className="hidden sm:inline">GitHub</span>
           </a>
+          <Tooltip text={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors cursor-pointer"
+            >
+              {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+            </button>
+          </Tooltip>
         </div>
       </header>
 

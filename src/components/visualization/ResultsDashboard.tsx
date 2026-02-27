@@ -23,6 +23,7 @@ function AnimatedBar({ width, delay = 0, className }: { width: string; delay?: n
 import { Activity, Cpu, HardDrive, Zap, Clock, DollarSign, TrendingUp, Timer, Info, Lightbulb, Copy, Check, Link2, ImageIcon, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSimulationStore } from '../../stores/simulation.ts';
 import { useConfigStore, type TrainingGoal } from '../../stores/config.ts';
+import { useGameStore } from '../../stores/game.ts';
 import { formatBytes, formatNumber, formatInteger, formatTime, formatLatency, formatTokensShort } from '../../types/base.ts';
 import type { ModelSpec } from '../../types/index.ts';
 import type { InferenceSimulationResult } from '../../types/inference.ts';
@@ -37,7 +38,7 @@ import { GPUGridPanel, InferenceGPUGridPanel } from './GPUGrid.tsx';
 
 import { exportConfigToJSON, type ExportableConfig, type ExportableInferenceConfig } from '../../utils/export.ts';
 import { toExponent, buildShareURL } from '../../utils/share.ts';
-import { getGPUHourlyRate } from '../../core/cost/index.ts';
+import { getGPUHourlyRate, calculateCostPerMillionTokens } from '../../core/cost/index.ts';
 import { ShareCard, type ShareCardProps } from './ShareCard.tsx';
 import { copyImageToClipboard, downloadImage } from '../../utils/png-export.ts';
 import { ParetoFrontier } from './ParetoFrontier.tsx';
@@ -218,10 +219,11 @@ const GOAL_LABELS: Record<TrainingGoal, string> = {
 // Per-GPU-hour cost lookup — sourced from shared cost module
 
 // Shared Analysis panel for both training and inference
-function AnalysisPanel({ bottleneck, bottleneckColor, recommendations }: {
+function AnalysisPanel({ bottleneck, bottleneckColor, recommendations, blurred }: {
   bottleneck: string;
   bottleneckColor: string;
   recommendations: string[];
+  blurred?: boolean;
 }) {
   return (
     <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
@@ -229,7 +231,13 @@ function AnalysisPanel({ bottleneck, bottleneckColor, recommendations }: {
         <Lightbulb className="w-5 h-5 text-yellow-400" />
         Analysis
       </h3>
-      <div className="flex gap-6">
+      <div className="relative">
+        {blurred && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <span className="text-xs text-gray-500">Hidden during learning mode</span>
+          </div>
+        )}
+      <div className={`flex gap-6${blurred ? ' blur-sm pointer-events-none select-none' : ''}`}>
         <div className="flex-shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-gray-400">Bottleneck:</span>
@@ -265,6 +273,7 @@ function AnalysisPanel({ bottleneck, bottleneckColor, recommendations }: {
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );
@@ -459,9 +468,10 @@ interface InferenceResultsProps {
   expertParallel: number;
   continuousBatching: boolean;
   batchSize: number;
+  blurred?: boolean;
 }
 
-function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, numGPUs, tensorParallel, expertParallel: simExpertParallel, continuousBatching: simContinuousBatching, batchSize: simBatchSize }: InferenceResultsProps) {
+function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, numGPUs, tensorParallel, expertParallel: simExpertParallel, continuousBatching: simContinuousBatching, batchSize: simBatchSize, blurred }: InferenceResultsProps) {
   const { latency, throughput, memory, kvCacheState, utilization, speculative } = result;
   const isCustomModel = useConfigStore(s => s.modelId.startsWith('custom-'));
   const paretoResult = useSimulationStore(s => s.inference.paretoResult);
@@ -481,9 +491,7 @@ function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, 
   const customPrice = useConfigStore.getState().pricePerGPUHour;
   const gpuPricing = getGPUHourlyRate(gpuId || '');
   const effectiveRate = customPrice ?? gpuPricing.rate;
-  const costPerMToken = throughput.tokensPerSecond > 0
-    ? (effectiveRate * numGPUs / 3600) / throughput.tokensPerSecond * 1e6
-    : 0;
+  const costPerMToken = calculateCostPerMillionTokens(effectiveRate, numGPUs, throughput.tokensPerSecond);
 
   const [specTooltip, setSpecTooltip] = useState<{ top: number; left: number } | null>(null);
   const specIconRef = useRef<HTMLSpanElement>(null);
@@ -942,6 +950,7 @@ function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, 
         bottleneck={utilization.bottleneck.replace('_', ' ')}
         bottleneckColor={utilization.bottleneck === 'memory_capacity' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}
         recommendations={result.recommendations}
+        blurred={blurred}
       />
 
       {/* Speculative Decoding (if enabled) */}
@@ -1033,6 +1042,7 @@ interface TrainingResultsProps {
   globalBatchSize: number;
   sequenceLength: number;
   configSnapshot: NonNullable<import('../../stores/simulation.ts').TrainingSimulationState['configSnapshot']> | null;
+  blurred?: boolean;
 }
 
 function TrainingResults({
@@ -1047,6 +1057,7 @@ function TrainingResults({
   globalBatchSize,
   sequenceLength,
   configSnapshot,
+  blurred,
 }: TrainingResultsProps) {
   const isCustomModel = useConfigStore(s => s.modelId.startsWith('custom-'));
   const clusterConfig = useConfigStore.getState().clusterConfig;
@@ -1825,6 +1836,7 @@ function TrainingResults({
             'bg-purple-500/20 text-purple-400'
           }
           recommendations={result.analysis.recommendations}
+          blurred={blurred}
         />
       )}
 
@@ -1855,6 +1867,7 @@ function TrainingResults({
 export function ResultsDashboard() {
   const simulation = useSimulationStore();
   const config = useConfigStore();
+  const inTask = useGameStore(s => !!s.activeTaskId);
 
   const { status, inference } = simulation;
   // Legacy fallback for training mode
@@ -1887,7 +1900,7 @@ export function ResultsDashboard() {
       const recommendations = inference.result?.recommendations ?? [];
 
       return (
-        <div className="flex flex-col items-center justify-center h-full text-center">
+        <div className="flex flex-col items-center justify-center flex-1 text-center">
           <div className="p-4 rounded-full bg-red-500/10 mb-4">
             <Activity className="w-8 h-8 text-red-400" />
           </div>
@@ -1898,7 +1911,13 @@ export function ResultsDashboard() {
             {errorMsg}
           </p>
           {recommendations.length > 0 && (
-            <div className="mt-5 text-left max-w-lg">
+            <div className="mt-5 text-left max-w-lg relative">
+              {inTask && (
+                <div className="absolute inset-0 flex items-center justify-center z-10">
+                  <span className="text-xs text-gray-500">Hidden during learning mode</span>
+                </div>
+              )}
+              <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>
               <p className="text-base font-medium text-gray-300 flex items-center gap-1.5 mb-2">
                 <Lightbulb className="w-4 h-4 text-yellow-400 shrink-0" />
                 Suggestions
@@ -1908,6 +1927,7 @@ export function ResultsDashboard() {
                   <li key={i}>{rec}</li>
                 ))}
               </ul>
+              </div>
             </div>
           )}
         </div>
@@ -1926,6 +1946,7 @@ export function ResultsDashboard() {
         expertParallel={inference.expertParallel}
         continuousBatching={inference.continuousBatching}
         batchSize={inference.batchSize}
+        blurred={inTask}
       />
     );
   }
@@ -1935,7 +1956,7 @@ export function ResultsDashboard() {
   if (status === 'error' || !metrics || !result) {
     const suggestions = result?.analysis?.recommendations ?? [];
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center">
+      <div className="flex flex-col items-center justify-center flex-1 text-center">
         <div className="p-4 rounded-full bg-red-500/10 mb-4">
           <Activity className="w-8 h-8 text-red-400" />
         </div>
@@ -1946,7 +1967,13 @@ export function ResultsDashboard() {
           {result?.state.error ?? simulation.error ?? 'An error occurred during simulation.'}
         </p>
         {suggestions.length > 0 && (
-          <div className="mt-5 text-left w-full max-w-md">
+          <div className="mt-5 text-left w-full max-w-md relative">
+            {inTask && (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <span className="text-xs text-gray-500">Hidden during learning mode</span>
+              </div>
+            )}
+            <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>
             <p className="text-base font-medium text-gray-300 flex items-center gap-1.5 mb-2">
               <Lightbulb className="w-4 h-4 text-yellow-400 shrink-0" />
               Suggestions
@@ -1956,6 +1983,7 @@ export function ResultsDashboard() {
                 <li key={i}>{rec}</li>
               ))}
             </ul>
+            </div>
           </div>
         )}
       </div>
@@ -1978,6 +2006,7 @@ export function ResultsDashboard() {
       globalBatchSize={snapshot?.globalBatchSize ?? config.training.globalBatchSize}
       sequenceLength={snapshot?.sequenceLength ?? config.sequenceLength}
       configSnapshot={snapshot}
+      blurred={inTask}
     />
   );
 }

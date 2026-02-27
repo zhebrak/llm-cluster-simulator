@@ -608,6 +608,28 @@ input[type="range"]::-moz-range-track {
 /* TP group borders — emerald in dark, gray in light */
 .border-emerald-400\/60 { border-color: rgba(156, 163, 175, 0.5) !important; }
 
+/* Game mode — TaskHUD, criteria, hints */
+.bg-gray-900\/95 { background-color: rgba(248, 249, 252, 0.97) !important; }
+.text-yellow-200\/80 { color: #92610a !important; }
+.border-yellow-800\/30 { border-color: rgba(180, 140, 40, 0.25) !important; }
+.text-yellow-400\/70 { color: rgba(161, 128, 32, 0.85) !important; }
+.hover\:text-yellow-400:hover { color: #a08020 !important; }
+.text-green-300 { color: #2a7a50 !important; }
+.text-red-300 { color: #b04040 !important; }
+.text-red-300\/80 { color: rgba(176, 64, 64, 0.9) !important; }
+.bg-red-900\/20 { background-color: rgba(255, 200, 200, 0.3) !important; }
+.border-red-800\/30 { border-color: rgba(192, 96, 96, 0.25) !important; }
+.border-green-500\/30 { border-color: rgba(64, 160, 112, 0.3) !important; }
+.border-green-500\/40 { border-color: rgba(64, 160, 112, 0.4) !important; }
+.border-yellow-500\/30 { border-color: rgba(180, 160, 40, 0.3) !important; }
+.border-green-400\/30 { border-color: rgba(64, 160, 112, 0.25) !important; }
+.border-yellow-400\/30 { border-color: rgba(180, 160, 40, 0.25) !important; }
+.border-red-400\/30 { border-color: rgba(192, 96, 96, 0.25) !important; }
+.bg-green-400\/20 { background-color: rgba(64, 160, 112, 0.15) !important; }
+.bg-green-400 { background-color: #40a070 !important; }
+.bg-yellow-500\/20 { background-color: rgba(201, 160, 32, 0.12) !important; }
+.hover\:bg-gray-700\/50:hover { background-color: var(--color-bg-hover) !important; }
+
 } /* end [data-theme="light"] */
 
 /* Auto-optimizer result banner */

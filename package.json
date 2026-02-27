@@ -11,7 +11,8 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "check": "tsc -b && eslint . && vitest run"
+    "check": "tsc -b && eslint . && vitest run",
+    "test:game-calibration": "vitest run tests/game/thresholds.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",

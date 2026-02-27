@@ -43,3 +43,14 @@ export const DEFAULT_GPU_HOURLY_RATE = { rate: 2.50, name: 'GPU' };
 export function getGPUHourlyRate(gpuId: string): { rate: number; name: string } {
   return GPU_HOURLY_RATES[gpuId] ?? DEFAULT_GPU_HOURLY_RATE;
 }
+
+/** Cost per million output tokens given cluster pricing and throughput */
+export function calculateCostPerMillionTokens(
+  ratePerGPUHour: number,
+  numGPUs: number,
+  tokensPerSecond: number,
+): number {
+  return tokensPerSecond > 0
+    ? (ratePerGPUHour * numGPUs / 3600) / tokensPerSecond * 1e6
+    : 0;
+}

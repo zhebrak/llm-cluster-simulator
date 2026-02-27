@@ -17,6 +17,7 @@ import { ALL_GPUS, GPU_CATEGORIES, supportsFlashAttention } from '../../core/har
 import { AVAILABLE_STRATEGIES, STRATEGY_GROUPS } from '../../core/strategies/index.ts';
 import { getGPUHourlyRate } from '../../core/cost/index.ts';
 import { formatNumber } from '../../types/base.ts';
+import { useGameStore } from '../../stores/game.ts';
 
 // Format numbers with commas for readability
 function formatWithCommas(n: number): string {
@@ -593,6 +594,8 @@ function ModelSelector({ value, onChange, onDeleteOption, groupedModels, label =
 export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
   const config = useConfigStore();
   const simulation = useSimulationStore();
+  const gameActive = useGameStore(s => s.active);
+  const inTask = useGameStore(s => !!s.activeTaskId);
   const [showCustomEditor, setShowCustomEditor] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const optBannerRef = useRef<HTMLDivElement>(null);
@@ -726,7 +729,13 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
       </div>
 
       {/* Example preset cycler — prev / next */}
-      <div className="px-3 pt-1.5 pb-3 border-b border-gray-800">
+      <div className="px-3 pt-1.5 pb-3 border-b border-gray-800 relative">
+        {inTask && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <span className="text-xs text-gray-500">Hidden during learning mode</span>
+          </div>
+        )}
+        <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>
         <label className="text-xs text-gray-400 mb-1 block">{config.mode === 'training' ? 'Training' : 'Inference'} Presets</label>
         <div className="flex items-center gap-1.5">
         <Tooltip text={`${getPrevDemoPreset(config.mode).modelLabel} · ${getPrevDemoPreset(config.mode).clusterLabel}`}>
@@ -744,6 +753,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
           <span className="truncate">{getNextDemoPreset(config.mode).modelLabel} · {getNextDemoPreset(config.mode).clusterLabel}</span>
           <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
         </button>
+        </div>
         </div>
       </div>
 
@@ -1381,7 +1391,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
             <span className="relative z-10">Run {config.mode === 'training' ? 'Training' : 'Inference'}</span>
             <span className="relative z-10 text-[10px] text-white/40 ml-1 translate-y-[2px]">Ctrl+Enter</span>
           </button>
-          {config.mode === 'training' && (
+          {config.mode === 'training' && !gameActive && (
             <Tooltip text="Auto-Optimize  Ctrl+Shift+Enter">
               <button
                 onClick={() => simulation.autoOptimizeTraining()}

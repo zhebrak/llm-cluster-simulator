@@ -585,7 +585,7 @@ const initialState = {
   inference: initialInferenceConfig,
 };
 
-const STORAGE_KEY = 'ddv-config';
+const STORAGE_KEY = 'llm-sim-config';
 const STORAGE_VERSION = 1;
 
 /**

@@ -4,3 +4,4 @@
 
 export { useConfigStore, type ConfigState, findPresetBySlug } from './config.ts';
 export { useSimulationStore, type SimulationState } from './simulation.ts';
+export { useGameStore } from './game.ts';
