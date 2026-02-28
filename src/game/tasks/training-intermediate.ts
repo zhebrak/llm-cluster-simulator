@@ -20,11 +20,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     briefing:
       'LLaMA 3.3 70B has 70 billion parameters. Even with {{fsdp|FSDP}} sharding model state across 16 GPUs, the per-GPU {{activation-memory|activation memory}} for a ' +
       '70B model is enormous — each GPU must compute the full forward pass through its share of ' +
-      'layers, storing all intermediate tensors. TP reduces activation memory by splitting each layer across GPUs. When FSDP alone runs ' +
+      'layers, storing all intermediate tensors. TP reduces activation memory by splitting each layer across GPUs. When `FSDP` alone runs ' +
       'out of memory, you need to split the model weights themselves across GPUs ' +
-      'within a node. That is what Tensor Parallelism (TP) does: it partitions ' +
+      'within a node. That is what {{tp|Tensor Parallelism (TP)}} does: it partitions ' +
       'each layer\'s weight matrices so that every GPU computes only a slice of ' +
-      'each matrix multiply. Your mission: get the model running efficiently and achieve MFU above 40%.',
+      'each matrix multiply. Your mission: get the model running efficiently and achieve `MFU` above 40%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -54,24 +54,24 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'FSDP across 16 GPUs works, but MFU is limited by inter-node FSDP ' +
-        'communication. With 16 GPUs across 2 nodes, the AllGather and ' +
-        'ReduceScatter cross InfiniBand for every layer.',
-      'Switch the strategy from "FSDP" to "FSDP + TP" in the sidebar. TP ' +
-        'handles intra-node communication over {{nvlink|NVLink}} (900 GB/s on H100) while FSDP ' +
+      '`FSDP` across 16 GPUs works, but `MFU` is limited by inter-node `FSDP` ' +
+        'communication. With 16 GPUs across 2 nodes, the `AllGather` and ' +
+        '`ReduceScatter` cross InfiniBand for every layer.',
+      'Switch the strategy from "`FSDP`" to "`FSDP` + TP" in the sidebar. TP ' +
+        'handles intra-node communication over {{nvlink|NVLink}} (900 GB/s on H100) while `FSDP` ' +
         'handles inter-node communication. This reduces the volume of slow ' +
         'inter-node traffic.',
-      'Try different TP degrees with FSDP+TP. TP AllReduces stay on NVLink, ' +
-        'and FSDP overlaps its inter-node comms with compute. Balance TP ' +
+      'Try different TP degrees with `FSDP`+TP. TP `AllReduce`s stay on `NVLink`, ' +
+        'and `FSDP` overlaps its inter-node comms with compute. Balance TP ' +
         '(memory reduction) against DP (throughput scaling).',
     ],
     successExplanation:
       'Tensor Parallelism splits each weight matrix column-wise (or row-wise) ' +
       'across TP GPUs. Because each GPU only computes a fraction of each layer, ' +
       'both the parameter memory and the activation memory shrink by roughly 1/TP.\n\n' +
-      'This is why TP is the first tool to reach for when a model is too large for ' +
-      'FSDP alone. The tradeoff: TP requires an AllReduce after every transformer ' +
-      'layer, so it works best over the fast NVLink interconnect within a single node.',
+      'This is why `TP` is the first tool to reach for when a model is too large for ' +
+      '`FSDP` alone. The tradeoff: `TP` requires an `AllReduce` after every transformer ' +
+      'layer, so it works best over the fast `NVLink` interconnect within a single node.',
   },
 
   // ── 2. TP Degree Selection ──────────────────────────────────────────
@@ -93,7 +93,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       '{{allreduce|AllReduce}} communication after every layer. On 16 H100s (2 nodes), TP could be 1, 2, ' +
       '4, or 8. Your goal is to find the TP degree that achieves the best ' +
       'throughput, measured by {{mfu|MFU}} above 40%. Experiment with different TP values ' +
-      'and observe how MFU changes.',
+      'and observe how `MFU` changes.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -124,16 +124,16 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'Higher TP means each GPU computes less per layer but communicates more (AllReduce every layer). Lower TP means larger matrix multiplies (better GPU utilization) but more per-GPU memory. Remember: `DP = totalGPUs / TP`.',
+      'Higher TP means each GPU computes less per layer but communicates more (`AllReduce` every layer). Lower TP means larger matrix multiplies (better GPU utilization) but more per-GPU memory. Remember: `DP = totalGPUs / TP`, so lower TP means more data-parallel ranks for throughput.',
       'Experiment with different TP degrees. Lower TP gives more DP for throughput scaling, higher TP reduces memory. Also make sure your batch size is large enough to keep GPUs fed.',
     ],
     successExplanation:
-      'The optimal TP degree balances two forces: (1) each GPU needs enough work ' +
-      'per layer to saturate its compute units (favors lower TP), and (2) each GPU ' +
-      'must have enough memory to hold activations (favors higher TP).\n\n' +
-      'Lower TP gives more data parallelism for throughput scaling, while higher TP reduces ' +
+      'The optimal `TP` degree balances two forces: (1) each GPU needs enough work ' +
+      'per layer to saturate its compute units (favors lower `TP`), and (2) each GPU ' +
+      'must have enough memory to hold activations (favors higher `TP`).\n\n' +
+      'Lower `TP` gives more `DP` for throughput scaling, while higher `TP` reduces ' +
       'per-GPU memory pressure. The optimal choice depends on model size, GPU memory, and ' +
-      'interconnect bandwidth. TP should always be a power of 2 and stay within a single ' +
+      'interconnect bandwidth. `TP` should always be a power of 2 and stay within a single ' +
       'high-bandwidth-interconnect-connected node.',
   },
 
@@ -152,8 +152,8 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     ],
     briefing:
       'You have LLaMA 3.3 70B on 32 H100 GPUs across 4 nodes. The current configuration uses ' +
-      'TP=16 — spanning two full nodes. MFU is terrible. Investigate why and fix it.\n\n' +
-      'Your goal: achieve MFU above 40% while keeping memory utilization below 60%.',
+      '`TP=16` — spanning two full nodes. `MFU` is terrible. Investigate why and fix it.\n\n' +
+      'Your goal: achieve `MFU` above 40% while keeping memory utilization below 60%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -191,18 +191,18 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'Look at the TP degree relative to GPUs per node. TP AllReduce happens at every transformer layer — what interconnect is it using?',
-      'Reduce TP so it fits within a single node. Let FSDP handle the inter-node communication instead.',
+      'Look at the TP degree relative to GPUs per node. TP `AllReduce` happens at every transformer layer — what interconnect is it using?',
+      'Reduce TP so it fits within a single node. Let `FSDP` handle the inter-node communication instead.',
     ],
     successExplanation:
-      '2D parallelism (FSDP+TP) is the standard approach for modern LLM training. The ' +
+      '{{2d-parallel|2D parallelism}} (`FSDP`+TP) is the standard approach for modern LLM training. The ' +
       'principle is simple: use the fastest interconnect for the most frequent ' +
-      'communication. TP AllReduces happen every layer (high frequency), so they ' +
-      'must go over NVLink (~900 GB/s). When TP=16 spans two nodes, those AllReduces ' +
-      'cross the inter-node network (~400 GB/s for InfiniBand NDR on H100 clusters) — a massive bandwidth drop that tanks MFU.\n\n' +
-      'FSDP AllGathers happen once per layer but can ' +
+      'communication. `TP` `AllReduce`s happen every layer (high frequency), so they ' +
+      'must go over `NVLink` (~900 GB/s). When `TP=16` spans two nodes, those `AllReduce`s ' +
+      'cross the inter-node network — `InfiniBand` provides far less bandwidth than `NVLink` (hundreds of GB/s vs ~900 GB/s on H100 nodes) — a massive bandwidth drop that tanks `MFU`.\n\n' +
+      '`FSDP` `AllGather`s happen once per layer but can ' +
       'be pipelined and overlapped with compute, so they tolerate the slower ' +
-      'the inter-node network. Keeping TP within a node and FSDP across nodes ' +
+      'inter-node network. Keeping `TP` within a node and `FSDP` across nodes ' +
       'is the standard recipe for clusters up to a few hundred GPUs.',
   },
 
@@ -221,12 +221,12 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'Know layers must divide evenly by PP degree',
     ],
     briefing:
-      'GPT-3 175B is one of the largest dense models. With {{zero1|ZeRO-1}}+TP, the ' +
+      'GPT-3 175B is one of the largest dense models. With {{zero1|ZeRO-1}}+`TP`, the ' +
       '{{optimizer-states|optimizer state}} is sharded across DP ranks but parameters and gradients ' +
-      'are replicated. At TP=8, each GPU holds `175B/8 ≈ 22B` params — that is ' +
-      '44 GB of BF16 weights plus 88 GB of FP32 gradients, far exceeding an ' +
-      'A100\'s 80 GB. Pipeline Parallelism (PP) splits the model\'s layers ' +
-      'across pipeline stages, reducing the per-GPU weight and gradient memory. ' +
+      'are replicated. At `TP=8`, each GPU holds `175B/8 ≈ 22B` params — that is ' +
+      '44 GB of `BF16` weights plus 88 GB of `FP32` gradients, far exceeding an ' +
+      'A100\'s 80 GB. {{pp|Pipeline Parallelism (PP)}} splits the model\'s layers ' +
+      'across {{pipeline-stage|pipeline stages}}, reducing the per-GPU weight and gradient memory. ' +
       'You have 64 A100 GPUs. Add PP to get the model running.',
     setup: {
       modelId: 'gpt3-175b',
@@ -267,18 +267,18 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         'see how microbatches flow through stages. Hover over the GPU grid to see how GPUs are assigned to TP ranks, PP stages, and DP groups.',
     ],
     successExplanation:
-      'Pipeline Parallelism is the third dimension of 3D parallelism. While TP ' +
-      'splits individual layers horizontally (across matrix columns) and ZeRO-1 ' +
-      'shards optimizer state, PP splits the model vertically — each stage ' +
-      'handles a contiguous block of layers. With ZeRO-1, parameters and ' +
-      'gradients are replicated per DP rank, so PP is essential to reduce the ' +
+      'Pipeline Parallelism is the third dimension of {{3d-parallel|3D parallelism}}. While `TP` ' +
+      'splits individual layers horizontally (across matrix columns) and `ZeRO-1` ' +
+      'shards optimizer state, `PP` splits the model vertically — each stage ' +
+      'handles a contiguous block of layers. With `ZeRO-1`, parameters and ' +
+      'gradients are replicated per `DP` rank, so `PP` is essential to reduce the ' +
       'per-GPU memory footprint for very large models.\n\nThe cost is the ' +
-      '"pipeline bubble": when the first stage starts its forward pass, the last ' +
+      '"{{pipeline-bubble|pipeline bubble}}": when the first stage starts its forward pass, the last ' +
       'stage is idle, and vice versa. We will tackle the bubble in the next task.\n\n' +
-      'This task uses ZeRO-1 (optimizer-only sharding) instead of FSDP. With PP already splitting ' +
-      'layers across stages, FSDP\'s parameter sharding adds AllGather/ReduceScatter overhead with ' +
-      'diminishing memory benefit — the replicated weights per DP rank are already reduced by PP. ' +
-      'ZeRO-1 keeps gradient AllReduce simple and efficient.',
+      'This task uses `ZeRO-1` (optimizer-only sharding) instead of `FSDP`. With `PP` already splitting ' +
+      'layers across stages, `FSDP`\'s parameter sharding adds `AllGather`/`ReduceScatter` overhead with ' +
+      'diminishing memory benefit — the replicated weights per `DP` rank are already reduced by `PP`. ' +
+      '`ZeRO-1` keeps gradient `AllReduce` simple and efficient.',
   },
 
   // ── 5. The Pipeline Bubble ──────────────────────────────────────────
@@ -330,11 +330,12 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'The number of microbatches (`m`) equals the {{gradient-accumulation|gradient accumulation}} steps: ' +
-        '`GBS / (MBS × DP)`. To increase `m`, raise the global batch size. The ' +
+      'The number of microbatches per DP rank is `GA = GBS / (MBS × DP)`. Raising ' +
+        '`GBS` increases microbatches and shrinks the bubble. The ' +
         'pipeline Gantt chart visualizes the bubble — gaps between forward/backward ' +
         'blocks shrink as you add microbatches.',
-      'With `PP=4`, `bubble = (pp-1)/(pp-1+m)`. The starting GBS is small, giving ' +
+      'The bubble fraction is `(pp-1)/(pp-1+m)` — increasing `m` (microbatches) ' +
+        'or decreasing PP both shrink it. The starting GBS is small, giving ' +
         'very few microbatches per DP rank. Try increasing GBS until the bubble ' +
         'drops below the threshold. Fewer PP stages also means less bubble at ' +
         'the same batch size.',
@@ -342,7 +343,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     successExplanation:
       'The pipeline bubble is inherent to synchronous pipeline parallelism: ' +
       'during the "ramp up" the later stages wait for activations, and during ' +
-      '"ramp down" the earlier stages wait for gradients. The 1F1B (one-forward- ' +
+      '"ramp down" the earlier stages wait for gradients. The `1F1B` (one-forward- ' +
       'one-backward) schedule minimizes the number of in-flight microbatches while ' +
       'keeping stages busy.\n\nThe key lever is the number of microbatches: each ' +
       'additional microbatch amortizes the fixed startup/shutdown cost across more ' +
@@ -365,13 +366,13 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     ],
     briefing:
       'You reduced the pipeline bubble with more microbatches. But there is ' +
-      'another technique: interleaved {{1f1b|1F1B}} scheduling. Instead of assigning ' +
+      'another technique: {{interleaved-1f1b|interleaved 1F1B}} scheduling. Instead of assigning ' +
       'each pipeline stage one contiguous block of layers, you assign it multiple ' +
-      'smaller "virtual stages." With `v` virtual stages per rank, the effective ' +
+      'smaller "{{virtual-stages|virtual stages}}." With `v` virtual stages per rank, the effective ' +
       'bubble shrinks by a factor of `v` because each stage\'s chunk of work is ' +
       'smaller and the pipeline fills faster. For GPT-3 175B with 96 layers and ' +
       '`PP=8`, setting `v=4` gives each stage 3 layers per virtual stage (`96/8/4=3`). ' +
-      'The current config uses `PP=8` with 1F1B and the bubble is above 12%. ' +
+      'The current config uses `PP=8` with `1F1B` and the bubble is above 12%. ' +
       'Your goal: get it below 12%.',
     setup: {
       modelId: 'gpt3-175b',
@@ -401,25 +402,26 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     ],
     hints: [
       'Look for the pipeline schedule selector in the sidebar. Switch from ' +
-        '"1F1B" to "Interleaved 1F1B." You will also need to set the number ' +
+        '"`1F1B`" to "Interleaved `1F1B`." You will also need to set the number ' +
         'of virtual pipeline stages (v).',
-      'With interleaved scheduling, the effective bubble becomes ' +
-        '`(pp-1)/(pp-1 + m×v)`. The number of layers per physical stage must be ' +
-        'divisible by `v`. GPT-3 has 96 layers; with `PP=8` that is 12 layers per ' +
+      'With interleaving, the bubble becomes ' +
+        '`(pp-1)/(pp-1 + m×v)` — each virtual stage multiplies the effective ' +
+        'microbatches. Layers per physical stage must divide evenly by `v`. ' +
+        'GPT-3 has 96 layers; with `PP=8` that is 12 layers per ' +
         'stage. Check which values of `v` evenly divide the layers per stage. ' +
         'The pipeline timeline shows the interleaved schedule — compare it to ' +
-        'standard 1F1B.',
-      'Try interleaved 1F1B with a `v` that gives fine-grained stages, and ' +
+        'standard `1F1B`.',
+      'Try interleaved `1F1B` with a `v` that gives fine-grained stages, and ' +
         'increase GBS so each DP rank has enough microbatches. Higher `v` shrinks ' +
         'the bubble dramatically — even modest values make a big difference.',
     ],
     successExplanation:
-      'Interleaved 1F1B assigns each pipeline rank v non-contiguous chunks of ' +
+      'Interleaved `1F1B` assigns each pipeline rank v non-contiguous chunks of ' +
       'layers instead of one contiguous block. This shrinks the "granularity" of ' +
       'each pipeline step, so the pipeline fills and drains v times faster.\n\nThe ' +
       'tradeoff is more point-to-point communication (activations must hop between ' +
       'stages more often) and slightly more complex scheduling. [Megatron-LM (Narayanan et al., 2021)](https://arxiv.org/abs/2104.04473) and ' +
-      'similar frameworks use interleaved scheduling by default for large PP ' +
+      'similar frameworks use interleaved scheduling by default for large `PP` ' +
       'degrees. Nemotron 340B, for example, uses `PP=12` with `v=8` to achieve a ' +
       'bubble around 10%.',
   },
@@ -441,12 +443,12 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     briefing:
       'Even with TP splitting weight matrices, some operations like {{layernorm|LayerNorm}} ' +
       'and {{dropout}} are replicated on every TP rank -- each GPU holds the full ' +
-      'sequence of activations for these ops. Sequence Parallelism (SP) fixes ' +
+      'sequence of activations for these ops. {{sp|Sequence Parallelism (SP)}} fixes ' +
       'this by partitioning activations along the sequence dimension for these ' +
-      'replicated regions. The AllReduce in TP becomes a {{reducescatter|ReduceScatter}} + ' +
+      'replicated regions. The `AllReduce` in `TP` becomes a {{reducescatter|ReduceScatter}} + ' +
       '{{allgather|AllGather}} pair, but the activation memory per GPU drops to 1/TP even for ' +
-      'non-matmul ops. You have 70B on 16 H100s with TP=4. Your goal: push ' +
-      'MFU above 41%.',
+      'non-matmul ops. You have 70B on 16 H100s with `TP=4`. Your goal: push ' +
+      '`MFU` above 41%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -491,11 +493,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         'memory savings compound with the number of layers.',
     ],
     successExplanation:
-      'Sequence Parallelism is a nearly free optimization when used with TP. ' +
-      'Instead of an AllReduce (which is ReduceScatter + AllGather combined), SP ' +
-      'keeps the ReduceScatter and AllGather as separate operations around the ' +
+      'Sequence Parallelism is a nearly free optimization when used with `TP`. ' +
+      'Instead of an `AllReduce` (which is `ReduceScatter` + `AllGather` combined), `SP` ' +
+      'keeps the `ReduceScatter` and `AllGather` as separate operations around the ' +
       'non-tensor-parallel regions. Between them, each GPU holds only `1/TP` of the ' +
-      'sequence.\n\nThe total communication volume is identical to TP\'s AllReduce, ' +
+      'sequence.\n\nThe total communication volume is identical to `TP`\'s `AllReduce`, ' +
       'but the memory savings are substantial -- especially for long sequences ' +
       'where activation memory dominates. SP is enabled by default in most modern ' +
       'training frameworks like Megatron-LM.',
@@ -517,11 +519,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     ],
     briefing:
       'Training at scale means running across many nodes connected by the inter-node network ' +
-      'rather than NVLink. With 64 H100s (8 nodes of 8 GPUs), inter-node FSDP ' +
-      'communication becomes a real bottleneck. The AllGather to reconstruct ' +
-      'weights and the ReduceScatter for gradients now traverse the network ' +
-      'fabric. Batch size, TP degree, and overlap efficiency all matter more at ' +
-      'this scale. Configure FSDP+TP to achieve MFU above 40% with memory ' +
+      'rather than `NVLink`. With 64 H100s (8 nodes of 8 GPUs), inter-node `FSDP` ' +
+      'communication becomes a real bottleneck. The `AllGather` to reconstruct ' +
+      'weights and the `ReduceScatter` for gradients now traverse the network ' +
+      'fabric. Batch size, `TP` degree, and overlap efficiency all matter more at ' +
+      'this scale. Configure `FSDP`+TP to achieve `MFU` above 40% with memory ' +
       'utilization below 40% on 64 GPUs.',
     setup: {
       modelId: 'llama3.3-70b',
@@ -558,24 +560,24 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'TP should stay within a node (TP <= 8) so its frequent AllReduces use ' +
-        'fast NVLink. FSDP spans all GPUs across nodes, communicating over ' +
+      'TP should stay within a node (TP <= 8) so its frequent `AllReduce`s use ' +
+        'fast `NVLink`. `FSDP` spans all GPUs across nodes, communicating over ' +
         'the inter-node fabric. The DP degree is determined by totalGPUs / TP.',
       'Larger batch sizes help: more gradient accumulation steps mean more ' +
-        'compute per communication round. FSDP can overlap its AllGather with ' +
+        'compute per communication round. `FSDP` can overlap its `AllGather` with ' +
         'the forward pass ({{backward-prefetch|backward prefetch}}), hiding much of the cost.',
       'Try different TP degrees within a node and increase GBS significantly. ' +
-        'Enable SP for activation memory savings. FSDP overlaps well with large ' +
+        'Enable SP for activation memory savings. `FSDP` overlaps well with large ' +
         'enough batches.',
     ],
     successExplanation:
       'Scaling from 1-2 nodes to 4+ nodes introduces inter-node communication ' +
-      'as a significant factor.\n\nThe key insights: (1) keep TP within a node so ' +
-      'its frequent AllReduces use NVLink, (2) let FSDP handle inter-node ' +
-      'communication because its AllGather can be overlapped with compute via ' +
+      'as a significant factor.\n\nThe key insights: (1) keep `TP` within a node so ' +
+      'its frequent `AllReduce`s use `NVLink`, (2) let `FSDP` handle inter-node ' +
+      'communication because its `AllGather` can be overlapped with compute via ' +
       'backward prefetch, and (3) use large enough batch sizes so that compute ' +
-      'time dominates communication time. This is the standard "TP intra-node, ' +
-      'DP inter-node" pattern used by virtually all large-scale training runs.',
+      'time dominates communication time. This is the standard "`TP` intra-node, ' +
+      '`DP` inter-node" pattern used by virtually all large-scale training runs.',
   },
 
   // ── 9. MoE: Mixture of Experts ─────────────────────────────────────
@@ -593,14 +595,14 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'Know MFU uses active FLOPs (6 x activeParams x tokens), not total params',
     ],
     briefing:
-      'Mixtral 8x7B is a Mixture-of-Experts model: it has 8 expert FFN blocks ' +
+      'Mixtral 8x7B is a {{moe|Mixture-of-Experts}} model: it has 8 expert FFN blocks ' +
       'per layer, but the {{router}} activates only 2 for each token. This means the ' +
       'total parameter count is large (~47B) but the {{active-params|active parameters}} per token ' +
       'are much smaller (~13B).\n\n' +
-      'The setup uses DDP, which replicates ALL 47B parameters on every GPU — that is ' +
+      'The setup uses `DDP`, which replicates ALL 47B parameters on every GPU — that is ' +
       '~846 GB of model state per GPU. Run the simulation and observe the OOM. Then switch ' +
       'to the strategy that shards everything across GPUs.\n\n' +
-      'Your goal: get Mixtral running and achieve MFU above 35%.',
+      'Your goal: get Mixtral running and achieve `MFU` above 35%.',
     setup: {
       modelId: 'mixtral-8x7b',
       gpuId: 'h100-sxm',
@@ -632,16 +634,16 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     ],
     hints: [
       'DDP replicates all parameters on every GPU. With 47B total params, the model state per GPU is enormous. Switch to a strategy that shards model state across GPUs.',
-      'FSDP shards parameters, gradients, and optimizer states — reducing per-GPU memory by the number of GPUs. MoE models benefit hugely because all expert weights are sharded.',
+      '`FSDP` shards parameters, gradients, and optimizer states — reducing per-GPU memory by the number of GPUs. MoE models benefit hugely because all expert weights are sharded.',
     ],
     successExplanation:
       'Mixture-of-Experts models are "sparse" -- they have many parameters but ' +
       'activate only a subset per token. Mixtral routes each token to 2 of 8 ' +
       'experts, so compute scales with ~13B active params while knowledge is ' +
-      'stored in ~47B total params.\n\nDDP is infeasible for MoE models because it ' +
-      'replicates ALL parameters (including idle experts) on every GPU. FSDP shards ' +
+      'stored in ~47B total params.\n\n`DDP` is infeasible for MoE models because it ' +
+      'replicates ALL parameters (including idle experts) on every GPU. `FSDP` shards ' +
       'everything across GPUs, bringing per-GPU memory to a manageable level. ' +
-      'At larger scale, Expert Parallelism (EP) ' +
+      'At larger scale, Expert Parallelism (`EP`) ' +
       'assigns different experts to different GPUs, requiring All-to-All ' +
       'communication to route tokens -- but that is an advanced topic. EP is covered in the ' +
       'advanced track, along with the All-to-All communication pattern it uses.',
@@ -662,12 +664,12 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'Recognize FP8 as the production frontier for Hopper+ training',
     ],
     briefing:
-      'H100 GPUs have dedicated FP8 Tensor Cores that deliver 2x the FLOPS of ' +
-      'BF16. FP8 training uses 8-bit floating point for matrix multiplications ' +
+      'H100 GPUs have dedicated {{fp8|FP8}} Tensor Cores that deliver 2x the `TFLOPS` of ' +
+      '`BF16`. `FP8` training uses 8-bit floating point for matrix multiplications ' +
       'while keeping master weights and critical accumulations in higher ' +
-      'precision. With {{transformer-engine|Transformer Engine}} handling the dynamic scaling, FP8 can ' +
+      'precision. With {{transformer-engine|Transformer Engine}} handling the dynamic scaling, `FP8` can ' +
       'nearly double throughput with minimal accuracy impact for large models. ' +
-      'You have LLaMA 3.3 70B on 16 H100s (2 nodes) in BF16. Your goal: push MFU above 40%.',
+      'You have LLaMA 3.3 70B on 16 H100s (2 nodes) in `BF16`. Your goal: push `MFU` above 40%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -698,26 +700,26 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'FP8 is available on Hopper (H100) and newer GPUs. Look for the ' +
-        'precision selector in the sidebar and switch from BF16 to FP8. The ' +
+      '`FP8` is available on Hopper (H100) and newer GPUs. Look for the ' +
+        'precision selector in the sidebar and switch from BF16 to `FP8`. The ' +
         'peak TFLOPS doubles, so the same compute finishes in half the time.',
-      'FP8 also reduces communication volume: TP AllReduce sends FP8 tensors ' +
+      '`FP8` also reduces communication volume: TP `AllReduce` sends `FP8` tensors ' +
         '(1 byte per element) instead of BF16 (2 bytes), halving TP ' +
         'communication time. This makes higher TP degrees more practical.',
-      'Combine FP8 precision with a moderate TP degree and a large enough ' +
+      'Combine `FP8` precision with a moderate TP degree and a large enough ' +
         'batch size. With the 2× FLOPS boost and reduced communication, the ' +
-        'MFU target is achievable. Enable Sequence Parallelism for extra ' +
+        '`MFU` target is achievable. Enable Sequence Parallelism for extra ' +
         'memory savings.',
     ],
     successExplanation:
-      'FP8 training is a major advance for Hopper and newer GPUs. The H100\'s ' +
-      'FP8 Tensor Cores deliver ~2000 TFLOPS vs ~990 TFLOPS for BF16. ' +
+      '`FP8` training is a major advance for Hopper and newer GPUs. The H100\'s ' +
+      '`FP8` Tensor Cores deliver ~2000 `TFLOPS` vs ~990 `TFLOPS` for `BF16`. ' +
       'NVIDIA\'s Transformer Engine handles per-tensor dynamic scaling to ' +
       'maintain training stability: it tracks the range of activations and ' +
-      'weights, choosing scale factors that maximize the use of FP8\'s limited ' +
-      'dynamic range.\n\nThe communication benefit is equally important -- TP ' +
-      'AllReduce with FP8 collectives halves the bandwidth requirement, which ' +
-      'is critical as models scale. DeepSeek V3 used FP8 training on H800s to ' +
-      'achieve 43.7% MFU at massive scale.',
+      'weights, choosing scale factors that maximize the use of `FP8`\'s limited ' +
+      'dynamic range.\n\nThe communication benefit is equally important -- `TP` ' +
+      '`AllReduce` with `FP8` collectives halves the bandwidth requirement, which ' +
+      'is critical as models scale. DeepSeek V3 used `FP8` training on H800s to ' +
+      'achieve 43.7% `MFU` at massive scale.',
   },
 ];

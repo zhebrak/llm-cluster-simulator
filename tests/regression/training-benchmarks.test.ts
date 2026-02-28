@@ -1363,20 +1363,20 @@ describe('Inference Latency — Comprehensive', () => {
     expect(r.latency.tpot).toBeGreaterThan(2.44); expect(r.latency.tpot).toBeLessThan(3.30);
   });
 
-  it('DBRX 132B × 8 H100 TP=8: TTFT ≈ 12.9ms, TPOT ≈ 3.4ms', () => {
+  it('DBRX 132B × 8 H100 TP=8: TTFT ≈ 12.9ms, TPOT ≈ 4.2ms', () => {
     const r = infer({ modelId: 'dbrx', gpuId: 'h100-sxm', numGPUs: 8,
       batchSize: 1, inputSeqLen: 512, outputSeqLen: 256, weightPrecision: 'bf16', kvCachePrecision: 'bf16', tensorParallel: 8 });
     expect(r.success).toBe(true);
     expect(r.latency.ttft).toBeGreaterThan(10.98); expect(r.latency.ttft).toBeLessThan(14.86);
-    expect(r.latency.tpot).toBeGreaterThan(2.83); expect(r.latency.tpot).toBeLessThan(3.83);
+    expect(r.latency.tpot).toBeGreaterThan(3.53); expect(r.latency.tpot).toBeLessThan(4.78);
   });
 
-  it('Mixtral 8x22B × 8 H100 TP=8: TTFT ≈ 14.2ms, TPOT ≈ 3.7ms', () => {
+  it('Mixtral 8x22B × 8 H100 TP=8: TTFT ≈ 14.2ms, TPOT ≈ 4.4ms', () => {
     const r = infer({ modelId: 'mixtral-8x22b', gpuId: 'h100-sxm', numGPUs: 8,
       batchSize: 1, inputSeqLen: 512, outputSeqLen: 256, weightPrecision: 'bf16', kvCachePrecision: 'bf16', tensorParallel: 8 });
     expect(r.success).toBe(true);
     expect(r.latency.ttft).toBeGreaterThan(12.10); expect(r.latency.ttft).toBeLessThan(16.37);
-    expect(r.latency.tpot).toBeGreaterThan(3.04); expect(r.latency.tpot).toBeLessThan(4.11);
+    expect(r.latency.tpot).toBeGreaterThan(3.75); expect(r.latency.tpot).toBeLessThan(5.07);
   });
 
   it('DeepSeek-V2 236B × 8 H100 TP=8: TTFT ≈ 17.6ms, TPOT ≈ 3.63ms', () => {

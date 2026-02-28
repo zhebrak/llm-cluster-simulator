@@ -142,6 +142,31 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     definition:
       'NVIDIA L40S — Ada Lovelace. 48 GB GDDR6, 362 BF16 TFLOPS. PCIe only (no NVLink).',
   },
+  'rtx-4090': {
+    display: 'RTX 4090',
+    definition:
+      'NVIDIA GeForce RTX 4090 — Ada Lovelace consumer GPU. 24 GB GDDR6X, 330 BF16 TFLOPS. PCIe only.',
+  },
+  'rtx-3090': {
+    display: 'RTX 3090',
+    definition:
+      'NVIDIA GeForce RTX 3090 — Ampere consumer GPU. 24 GB GDDR6X, 71 BF16 TFLOPS. PCIe only.',
+  },
+  l4: {
+    display: 'L4',
+    definition:
+      'NVIDIA L4 — Ada Lovelace inference GPU. 24 GB GDDR6, 121 BF16 TFLOPS. PCIe only, low power (72W).',
+  },
+  t4: {
+    display: 'T4',
+    definition:
+      'NVIDIA T4 — Turing generation inference GPU. 16 GB GDDR6, 320 GB/s bandwidth. No BF16/FP8 support.',
+  },
+  a10g: {
+    display: 'A10G',
+    definition:
+      'NVIDIA A10G — Ampere inference GPU. 24 GB GDDR6, 70 BF16 TFLOPS. Popular on AWS for inference workloads.',
+  },
 
   // ── Parallelism Strategies ────────────────────────────────────────────
   dp: {
@@ -413,6 +438,11 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
 
   // ── Inference ─────────────────────────────────────────────────────────
+  'arithmetic-intensity': {
+    display: 'arithmetic intensity',
+    definition:
+      'Ratio of compute operations (FLOPs) to bytes transferred from memory. Low intensity (like decode) means the GPU is bottlenecked by memory bandwidth, not compute.',
+  },
   'kv-cache': {
     display: 'KV cache',
     definition:

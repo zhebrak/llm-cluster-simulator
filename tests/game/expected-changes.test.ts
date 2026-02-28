@@ -312,6 +312,31 @@ describe('IB01 — First Inference', () => {
   });
 });
 
+describe('IB02 — Right-Sizing Your Model', () => {
+  const snapshot = makeSnapshot({ modelId: 'llama3.3-70b', gpuId: 'rtx-4090' });
+
+  it('correct: change model to 8B', () => {
+    expect(validate('inference-beginner-02', snapshot,
+      makeSnapshot({ modelId: 'llama3.1-8b', gpuId: 'rtx-4090' })).valid).toBe(true);
+  });
+  it('correct: change model to different smaller model', () => {
+    expect(validate('inference-beginner-02', snapshot,
+      makeSnapshot({ modelId: 'qwen3-14b', gpuId: 'rtx-4090' })).valid).toBe(true);
+  });
+  it('correct: change model AND quantize (complementary)', () => {
+    expect(validate('inference-beginner-02', snapshot,
+      makeSnapshot({ modelId: 'llama3.1-8b', gpuId: 'rtx-4090', weightPrecision: 'int4' })).valid).toBe(true);
+  });
+  it('wrong: change GPU instead of model', () => {
+    expect(validate('inference-beginner-02', snapshot,
+      makeSnapshot({ modelId: 'llama3.3-70b', gpuId: 'h100-sxm' })).valid).toBe(false);
+  });
+  it('wrong: only quantize without changing model', () => {
+    expect(validate('inference-beginner-02', snapshot,
+      makeSnapshot({ modelId: 'llama3.3-70b', gpuId: 'rtx-4090', weightPrecision: 'int4' })).valid).toBe(false);
+  });
+});
+
 describe('IB03 — KV Cache (multi-solution, no required changes)', () => {
   const snapshot = makeSnapshot();
 
@@ -334,6 +359,34 @@ describe('IB03 — KV Cache (multi-solution, no required changes)', () => {
   it('wrong: change GPU', () => {
     expect(validate('inference-beginner-03', snapshot,
       makeSnapshot({ gpuId: 'h100-sxm' })).valid).toBe(false);
+  });
+});
+
+describe('IB04 — The Bandwidth Bottleneck', () => {
+  const snapshot = makeSnapshot({ modelId: 'llama3.1-8b', gpuId: 't4', weightPrecision: 'int8' });
+
+  it('correct: change GPU to RTX 4090', () => {
+    expect(validate('inference-beginner-04', snapshot,
+      makeSnapshot({ modelId: 'llama3.1-8b', gpuId: 'rtx-4090', weightPrecision: 'int8' })).valid).toBe(true);
+  });
+  it('correct: change GPU to H100', () => {
+    expect(validate('inference-beginner-04', snapshot,
+      makeSnapshot({ modelId: 'llama3.1-8b', gpuId: 'h100-sxm', weightPrecision: 'int8' })).valid).toBe(true);
+  });
+  it('correct: change GPU AND batch size (complementary)', () => {
+    expect(validate('inference-beginner-04', snapshot,
+      makeSnapshot({ modelId: 'llama3.1-8b', gpuId: 'rtx-4090', weightPrecision: 'int8', batchSize: 4 })).valid).toBe(true);
+  });
+  it('wrong: change model instead of GPU', () => {
+    expect(validate('inference-beginner-04', snapshot,
+      makeSnapshot({ modelId: 'llama3.3-70b', gpuId: 't4', weightPrecision: 'int8' })).valid).toBe(false);
+  });
+  it('wrong: change weight precision instead of GPU', () => {
+    expect(validate('inference-beginner-04', snapshot,
+      makeSnapshot({ modelId: 'llama3.1-8b', gpuId: 't4', weightPrecision: 'int4' })).valid).toBe(false);
+  });
+  it('wrong: no changes', () => {
+    expect(validate('inference-beginner-04', snapshot, snapshot).valid).toBe(false);
   });
 });
 

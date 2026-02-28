@@ -39,6 +39,21 @@ describe('Inference TP consistency', () => {
     expect(relDiff).toBeLessThan(0.001);
   });
 
+  it('calculateLatencyWithTP(tp=1) TPOT within 0.1% of single-GPU estimator', () => {
+    const inputLen = 512;
+    const outputLen = 128;
+    const batchSize = 1;
+
+    const tpotSingle = estimateTPOT(llama70b, inputLen + outputLen / 2, batchSize, gpu, 'bf16');
+    const tpResult = calculateLatencyWithTP(
+      llama70b, inputLen, outputLen, batchSize, gpu, 1, 'bf16',
+    );
+
+    // At TP=1, per-GPU weights == total weights, so bwEff and all terms must match.
+    const relDiff = Math.abs(tpResult.tpot - tpotSingle) / tpotSingle;
+    expect(relDiff).toBeLessThan(0.001);
+  });
+
   it('higher TP should reduce TTFT for compute-bound prefill', () => {
     const inputLen = 2048;
     const outputLen = 256;

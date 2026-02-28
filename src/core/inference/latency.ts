@@ -726,7 +726,6 @@ export function calculateLatencyWithTP(
 
   // ── Decode ──
   const avgSeqLen = inputSeqLen + outputSeqLen / 2;
-  const baseTpot = estimateTPOT(model, avgSeqLen, batchSize, gpu, precision, kvCachePrecision);
 
   // Per-collective decode AllReduce: alpha + bandwidth
   const decodeBwPerCollective = tpDegree > 1
@@ -793,7 +792,49 @@ export function calculateLatencyWithTP(
       : 0;
     tpot = decodeBaseTime + perStepAllReduce + epAllToAllDecodeMs;
   } else {
-    const decodeBaseTime = baseTpot / tpDegree;
+    // Non-MLA: weights and KV cache both split across TP ranks
+    const totalWeightBytes = moeWeightBytesPerStep(model, batchSize, precision);
+    let weightBytesPerGPU: number;
+    if (model.isMoE && model.numExperts && ep > 1) {
+      const { sharedParams, routedExpertParams } = moeParamSplit(model);
+      const numActive = model.numActiveExperts ?? 2;
+      const numExperts = model.numExperts!;
+      const fractionTouched = 1 - Math.pow(1 - numActive / numExperts, batchSize);
+      weightBytesPerGPU = (sharedParams + fractionTouched * routedExpertParams / ep) * bytes / tpDegree;
+    } else {
+      weightBytesPerGPU = totalWeightBytes / tpDegree;
+    }
+    // GQA/MHA: KV heads split across TP ranks
+    const kvCacheBytesPerGPU = totalKVCacheMemory(model, avgSeqLen, batchSize, kvCachePrecision ?? precision) / tpDegree;
+
+    const weightDequantOverhead = getQuantizationOverhead(precision, gpu);
+    const kvDequantOverhead = getQuantizationOverhead(kvCachePrecision ?? precision, gpu);
+    const totalPerGPUBytes = weightBytesPerGPU * weightDequantOverhead
+                            + kvCacheBytesPerGPU * kvDequantOverhead;
+
+    const bwEff = getBandwidthEfficiency(weightBytesPerGPU + kvCacheBytesPerGPU);
+    const memoryTpot = (totalPerGPUBytes / (bandwidthBytesPerSec * bwEff)) * 1000;
+
+    // Compute floor with per-GPU saturation
+    const decodeFlopsPerStep = decodeFLOPs(model, avgSeqLen) * batchSize;
+    let effectiveComputeParallelism = tpDegree;
+    if (model.isMoE && model.numExperts && ep > 1) {
+      const numActive = model.numActiveExperts ?? 2;
+      const expertIntermediate = model.expertIntermediateSize ?? model.intermediateSize;
+      const mlpMatrices = model.gatedMLP ? 3 : 2;
+      const sharedIntermediate = model.sharedExpertIntermediateSize ?? expertIntermediate;
+      const activeExpertFlopsPerLayer = numActive * mlpMatrices * model.hiddenSize * expertIntermediate * 2
+        + (model.numSharedExperts ?? 0) * mlpMatrices * model.hiddenSize * sharedIntermediate * 2;
+      const numMoELayersLocal = model.numMoELayers ?? model.numLayers;
+      const expertFlopsFraction = Math.min(0.95,
+        (activeExpertFlopsPerLayer * numMoELayersLocal) / model.flopsPerToken);
+      const sharedFlopsFraction = 1 - expertFlopsFraction;
+      effectiveComputeParallelism = 1 / (sharedFlopsFraction / tpDegree + expertFlopsFraction / (tpDegree * ep));
+    }
+    const saturation = getMatmulSaturationFactor(batchSize, model.hiddenSize / tpDegree, gpu);
+    const computeTpot = (decodeFlopsPerStep / (effectiveComputeParallelism * getGPUTFLOPS(gpu, precision) * 1e12 * saturation * getPrefillEfficiency(gpu, precision))) * 1000;
+
+    const decodeBaseTime = Math.max(memoryTpot, computeTpot) + _decodeSamplingOverheadMs;
     const perStepAllReduce = tpDegree > 1
       ? computeExposedAllReduce(decodeArPerCollective, numTPCollectives, decodeBaseTime)
       : 0;

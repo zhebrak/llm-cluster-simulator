@@ -229,9 +229,9 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
 
   // Inference beginner
   'inference-beginner-01': { weightPrecision: 'fp8' },   // quantize for throughput
-  'inference-beginner-02': { weightPrecision: 'int8' },
+  'inference-beginner-02': { modelId: 'llama3.1-8b' },  // 70B can't fit on RTX 4090, switch to 8B
   'inference-beginner-03': { batchSize: 8 },  // reduce batch from 32 to avoid OOM
-  'inference-beginner-04': { weightPrecision: 'int8' },  // INT8 pushes throughput above 80 tok/s
+  'inference-beginner-04': { gpuId: 'rtx-4090' },  // T4 bandwidth too low, switch to higher-BW GPU
   'inference-beginner-05': { batchSize: 8 },
   'inference-beginner-06': { batchSize: 1 },  // reduce batch from 8→1 for low TPOT
   'inference-beginner-07': { flashAttention: true },  // FA needed at 32K seq to avoid OOM
@@ -243,9 +243,9 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'inference-intermediate-01': { tensorParallel: 4 },
   'inference-intermediate-02': { tensorParallel: 8 },
   'inference-intermediate-03': { tensorParallel: 8, weightPrecision: 'fp8' },
-  'inference-intermediate-04': { tensorParallel: 4 },  // Reduce TP from 8→4: 2 replicas, throughput > 1000
+  'inference-intermediate-04': { tensorParallel: 2 },  // Reduce TP from 8→2: 4 replicas, throughput > 1000
   'inference-intermediate-05': { kvCachePrecision: 'fp8' },  // KV quant to fit batch=32 at 16K, throughput > 135
-  'inference-intermediate-06': { batchSize: 48 },  // A100 TP=8 from setup, batch=48: throughput > 1200 AND TPOT < 15ms
+  'inference-intermediate-06': { batchSize: 48 },  // A100 TP=8 from setup, batch=48: throughput > 1100 AND TPOT < 15ms
   'inference-intermediate-07': { tensorParallel: 4, weightPrecision: 'int4', batchSize: 4 },  // RTX 4090 x4: INT4+TP4+batch4 for TPOT<25ms AND cost<$4/Mtok
   'inference-intermediate-08': { gpuId: 'h100-sxm', batchSize: 2 },  // A10G can't reach 120 tok/s — switch to H100
   'inference-intermediate-09': { tensorParallel: 4, speculativeDecoding: true, draftModelId: 'llama2-7b' },
@@ -343,15 +343,41 @@ describe('Hint progressions — key tasks show improvement', () => {
     expect(fixedCtx.memoryUtilization).toBeLessThan(1.0);
   });
 
-  it('inference-beginner-02: BF16 weights > 9GB → INT8 weights < 9GB', () => {
+  it('inference-beginner-02: 70B on RTX 4090 OOMs → 8B fits and throughput > 20 tok/s', () => {
     const task = getTaskById('inference-beginner-02')!;
-    // Default: BF16 → weights > 9GB
-    const defaultCtx = buildInferenceContext(task.setup)!;
-    expect(defaultCtx.memory.weights).toBeGreaterThan(9e9);
+    // Default: LLaMA 70B on RTX 4090 → OOMs (even INT4: 70B × 0.5 = 35 GB > 24 GB)
+    const defaultCtx = buildInferenceContext(task.setup);
+    expect(checkAnyCriterionFails(defaultCtx, task.winningCriteria)).toBe(true);
 
-    // Fix: INT8 → weights < 9GB
-    const fixedCtx = buildInferenceContextWith(task.setup, { weightPrecision: 'int8' })!;
-    expect(fixedCtx.memory.weights).toBeLessThan(9e9);
+    // Fix: switch to 8B → fits and throughput > 20 tok/s
+    const fixedCtx = buildInferenceContextWith(task.setup, { modelId: 'llama3.1-8b' })!;
+    expect(fixedCtx.success).toBe(true);
+    expect(fixedCtx.throughput.tokensPerSecond).toBeGreaterThan(20);
+  });
+
+  it('inference-beginner-04: T4 INT8 throughput < 60 tok/s → RTX 4090 INT8 throughput > 60 tok/s', () => {
+    const task = getTaskById('inference-beginner-04')!;
+    // Default: LLaMA 8B INT8 on T4 → low throughput
+    const defaultCtx = buildInferenceContext(task.setup)!;
+    expect(defaultCtx.throughput.tokensPerSecond).toBeLessThan(60);
+
+    // Fix: switch to RTX 4090 → higher bandwidth, throughput > 60 tok/s
+    const fixedCtx = buildInferenceContextWith(task.setup, { gpuId: 'rtx-4090' })!;
+    expect(fixedCtx.throughput.tokensPerSecond).toBeGreaterThan(60);
+  });
+
+  it('inference-beginner-04: GPU sweep — high-BW GPUs pass 60 tok/s, low-BW GPUs fail', () => {
+    const task = getTaskById('inference-beginner-04')!;
+    // High-bandwidth GPUs should clearly pass
+    for (const gpuId of ['rtx-4090', 'a100-80gb', 'h100-sxm']) {
+      const ctx = buildInferenceContextWith(task.setup, { gpuId })!;
+      expect(ctx.throughput.tokensPerSecond).toBeGreaterThan(60);
+    }
+    // Low-bandwidth GPUs should clearly fail
+    for (const gpuId of ['t4', 'l4', 'a10g']) {
+      const ctx = buildInferenceContextWith(task.setup, { gpuId })!;
+      expect(ctx.throughput.tokensPerSecond).toBeLessThan(60);
+    }
   });
 
   it('inference-beginner-07: no FA at 32K OOMs → +FA fits', () => {

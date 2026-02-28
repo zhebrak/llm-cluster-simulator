@@ -42,7 +42,7 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
     hints: [
       'Inference decode is memory-bandwidth bound: the GPU reads all weights from memory for every output token. Throughput is inversely proportional to the bytes read per step.',
       'Reducing the bytes per parameter means fewer bytes to read per token. Look at the weight precision selector.',
-      'Lower-precision formats (FP8, INT8, INT4) use fewer bytes per parameter than BF16. Try one.',
+      'Lower-precision formats ({{fp8|FP8}}, {{int8|INT8}}, {{int4|INT4}}) use fewer bytes per parameter than `BF16` — this is called {{quantization}}. Try one.',
     ],
     successExplanation:
       'Inference decode is fundamentally memory-bandwidth bound. The GPU reads all model weights from memory for every ' +
@@ -52,64 +52,55 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       'generated token. In the coming tasks, you will learn to manage these resources as models get larger and GPUs get smaller.',
   },
 
-  // ── 02 ── Weight Memory ─────────────────────────────────────────────
+  // ── 02 ── Right-Sizing Your Model ──────────────────────────────────
   {
     id: 'inference-beginner-02',
     mode: 'inference',
     difficulty: 'beginner',
     order: 1,
-    title: 'Weight Memory',
-    concept: 'Model size and precision formats',
+    title: 'Right-Sizing Your Model',
+    concept: 'Model selection as a memory constraint',
     learningObjectives: [
-      'Calculate weight memory: params x bytes_per_param (8B x 2 = 16 GB in BF16)',
-      'Use INT8/INT4 quantization to reduce weight memory 2-4x',
-      'Know T4 is a Turing GPU without native BF16 support — quantization is essential for older hardware',
+      'Calculate minimum weight memory: params × bytes_per_param, even at the most aggressive quantization',
+      'Recognize when no quantization can bridge the gap between model size and GPU memory',
+      'Know that model selection is the first deployment decision — it sets the memory floor',
     ],
     briefing:
-      'LLaMA 3.1 8B is a serious model — in BF16, its weights alone consume about 16 GB. ' +
-      'You need to run it on a T4, which has only 16 GB of memory. ' +
-      'The model barely fits at BF16, leaving almost no room for {{kv-cache|KV cache}} — ' +
-      'use {{quantization}} to free memory for real workloads.',
+      'LLaMA 3.3 70B is loaded on an {{rtx-4090|RTX 4090}} with 24 GB of memory. ' +
+      'Even at the most aggressive quantization (`INT4`, 0.5 bytes per parameter), ' +
+      '`70B × 0.5 = 35 GB` — well beyond the 24 GB limit. No amount of quantization can make this work.\n\n' +
+      'When minimum weight memory exceeds GPU capacity, the only option is a different model. ' +
+      'Your goal: get a working deployment with throughput above 20 tokens per second.',
     setup: {
-      modelId: 'llama3.1-8b',
-      gpuId: 't4',
+      modelId: 'llama3.3-70b',
+      gpuId: 'rtx-4090',
       numGPUs: 1,
     },
     winningCriteria: [
+      { field: 'success', operator: '==', value: true, label: 'Inference succeeds' },
       {
-        field: 'success',
-        operator: '==',
-        value: true,
-        label: 'Inference succeeds',
-      },
-      {
-        field: 'memoryUtilization',
-        operator: '<',
-        value: 1.0,
-        label: 'Fits in GPU memory',
-      },
-      {
-        field: 'memory.weights',
-        operator: '<',
-        value: 9e9,
-        label: 'Weights < 9 GB (quantized)',
+        field: 'throughput.tokensPerSecond',
+        operator: '>',
+        value: 20,
+        label: 'Throughput > 20 tok/s',
       },
     ],
     expectedChanges: [
-      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
-      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'modelId', check: 'changed', label: 'Changed model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'BF16 uses 2 bytes per parameter — for an 8B model, that is nearly all of the T4\'s 16 GB. Even if weights fit, there is almost no room for KV cache.',
-      'Try reducing the weight precision. {{int8|INT8}} uses 1 byte per parameter (half of BF16). {{int4|INT4}} or GPTQ-INT4 uses 0.5 bytes (a quarter). Both free up significant memory for KV cache.',
-      'Note: the T4 does not support BF16 natively (it is a Turing GPU). Lower-precision formats like INT8 and INT4 are a natural fit for this hardware.',
+      'Calculate the weight memory floor: `params × min_bytes_per_param`. At `INT4` (0.5 bytes), 70B parameters need 35 GB — already exceeding 24 GB.',
+      'Even the most aggressive quantization cannot bridge a 35 GB vs 24 GB gap. The model is fundamentally too large for this GPU.',
+      'Look at the model selector. A smaller model in the same family will fit comfortably and run well on the RTX 4090.',
     ],
     successExplanation:
-      'Weight quantization is the single most important technique for deploying large models on smaller GPUs. ' +
-      'By reducing precision from 16 bits to 8 or 4 bits per parameter, you cut weight memory by 2-4x ' +
-      'with surprisingly little quality loss.\n\nIn production, INT4 quantization (GPTQ, AWQ) is the standard ' +
-      'approach for running 7B+ models on consumer and edge hardware.',
+      'Model selection sets the memory floor. `weight_memory = params × bytes_per_param` is a hard ' +
+      'constraint — when minimum weight memory exceeds VRAM, no optimization helps. ' +
+      'Single-GPU deployments must right-size the model to the hardware.\n\n' +
+      'The formula is simple: check whether the model fits at the lowest precision your GPU supports ' +
+      'before considering any other optimization. A well-matched smaller model will always outperform ' +
+      'a model that cannot load at all.',
   },
 
   // ── 03 ── The KV Cache ──────────────────────────────────────────────
@@ -149,8 +140,8 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
     ],
     hints: [
       'The KV cache consumes massive memory at this batch size and sequence length — the configuration OOMs. Which of those two dimensions can you reduce?',
-      'KV cache memory = 2 (K and V) × num_layers × kv_heads × head_dim × seq_len × batch_size × bytes_per_value. Each dimension multiplies linearly. LLaMA 3.1 8B uses GQA with 8 KV heads (not the full 32 query heads), so the cache per request is smaller than MHA — but many concurrent requests still add up.',
-      'Try reducing the batch size significantly. Alternatively, use FP8 KV cache precision to halve KV cache memory at the same batch size.',
+      'The KV cache scales linearly with both batch size and sequence length — each dimension multiplies the total. Models using `GQA` have fewer KV heads than query heads, reducing per-request cache compared to `MHA` — but many concurrent requests still add up.',
+      'Try reducing the batch size significantly. Alternatively, use `FP8` KV cache precision to halve KV cache memory at the same batch size.',
     ],
     successExplanation:
       'The KV cache is the dynamic memory component of inference. Model weights are loaded once and stay constant, ' +
@@ -158,67 +149,65 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       '(documents, conversations), the KV cache can easily exceed the weight memory. Understanding this tradeoff ' +
       'between fixed weight memory and dynamic KV cache memory is fundamental to inference deployment.\n\n' +
       'Not all attention architectures create equal KV caches. LLaMA 3.1 8B uses Grouped-Query Attention ' +
-      '({{gqa|GQA}}) — only 8 KV heads shared across 32 query heads, a 4× reduction compared to standard MHA. ' +
+      '({{gqa|GQA}}) — only 8 KV heads shared across 32 query heads, a 4× reduction compared to standard `MHA`. ' +
       'LLaMA 3.3 70B also uses GQA with 8 KV heads across 64 query heads, an 8× reduction. GQA dramatically ' +
       'shrinks the KV cache, which is one reason modern models have proportionally smaller KV caches than ' +
-      'you might expect. MQA (Multi-Query Attention) takes this further with just 1 KV head.',
+      'you might expect. `MQA` (Multi-Query Attention) takes this further with just 1 KV head.',
   },
 
-  // ── 04 ── Quantization Benefits ─────────────────────────────────────
+  // ── 04 ── The Bandwidth Bottleneck ──────────────────────────────────
   {
     id: 'inference-beginner-04',
     mode: 'inference',
     difficulty: 'beginner',
     order: 3,
-    title: 'Quantization Benefits',
-    concept: 'Bandwidth savings from reduced precision',
+    title: 'The Bandwidth Bottleneck',
+    concept: 'Memory bandwidth as the decode bottleneck',
     learningObjectives: [
-      'Understand quantization improves throughput, not just memory (decode is bandwidth-bound)',
-      'Know INT8/INT4 reduce bytes transferred per parameter, increasing effective bandwidth',
-      'Recognize quantized models can run faster than full-precision ones due to bandwidth savings',
+      'Understand that autoregressive decode has very low arithmetic intensity — one token\'s compute vs reading ALL weights',
+      'Know that memory bandwidth (not TFLOPS) determines decode throughput',
+      'Recognize that GPU selection for inference should prioritize bandwidth over raw compute',
     ],
     briefing:
-      'Qwen 3 14B has about 14 billion parameters. In BF16, the weights alone take ~28 GB — more than ' +
-      'the RTX 3090\'s 24 GB of memory. The model does not fit at full precision.\n\n' +
-      'Decode is memory-bandwidth bound: the GPU reads all weights from memory for every output token. ' +
-      'Quantization reduces the bytes read per parameter — fewer bytes means both fitting the model AND ' +
-      'faster token generation.\n\n' +
-      'You have a single {{rtx-3090|RTX 3090}} (24 GB, Ampere architecture — no FP8 support). ' +
-      'Your goal: fit the model and push throughput above 30 tokens per second.',
+      'LLaMA 3.1 8B in `INT8` on a {{t4|T4}} — the model fits and runs, but throughput is low. ' +
+      'Why? Autoregressive decode has very low {{arithmetic-intensity|arithmetic intensity}}: ' +
+      'each output token requires reading ALL model weights from memory, but performs only a single token\'s ' +
+      'worth of computation. This makes memory bandwidth — not `TFLOPS` — the bottleneck.\n\n' +
+      'The T4 has modest bandwidth. Your goal: push throughput above 60 tokens per second ' +
+      'without changing the model or precision.',
     setup: {
-      modelId: 'qwen3-14b',
-      gpuId: 'rtx-3090',
+      modelId: 'llama3.1-8b',
+      gpuId: 't4',
       numGPUs: 1,
+      weightPrecision: 'int8',
     },
     winningCriteria: [
-      {
-        field: 'success',
-        operator: '==',
-        value: true,
-        label: 'Inference succeeds',
-      },
+      { field: 'success', operator: '==', value: true, label: 'Inference succeeds' },
       {
         field: 'throughput.tokensPerSecond',
         operator: '>',
-        value: 30,
-        label: 'Throughput > 30 tok/s',
+        value: 60,
+        label: 'Throughput > 60 tok/s',
       },
     ],
     expectedChanges: [
-      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'gpuId', check: 'changed', label: 'Changed GPU type' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
-      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+      { field: 'weightPrecision', check: 'unchanged', label: 'Did not change weight precision' },
     ],
     hints: [
-      'At BF16 (2 bytes/param), Qwen 3 14B requires 28 GB — exceeding the RTX 3090\'s 24 GB. You must quantize just to fit the model.',
-      'The RTX 3090 is an Ampere GPU — it does not support FP8. Use {{int8|INT8}} (1 byte/param) or {{int4|INT4}} (0.5 bytes/param) to fit the model and improve throughput. Calculate the weight memory at each precision to see what fits.',
+      'Decode throughput is approximately `bandwidth / weight_bytes` — bandwidth is the constraint, not compute. The T4 has modest memory bandwidth.',
+      'Compare GPU bandwidth specs in the GPU selector. A GPU with higher bandwidth reads the same weights faster, producing tokens proportionally faster.',
+      'A GPU with higher memory bandwidth will read the same `INT8` weights faster — throughput scales roughly with `memory_bandwidth / weight_bytes`.',
     ],
     successExplanation:
-      'On the RTX 3090, quantization serves a dual purpose: fitting the model (28 GB at BF16 exceeds 24 GB) ' +
-      'AND improving throughput. Inference decode is memory-bandwidth-bound (the GPU spends more time loading weights ' +
-      'than computing).\n\nBy using INT8 or INT4, you transfer fewer bytes per parameter, which means ' +
-      'higher effective bandwidth utilization and faster token generation. On consumer and older GPUs without ' +
-      'FP8 support, INT8 and INT4 are the standard quantization options — and they work well.',
+      'The {{arithmetic-intensity|arithmetic intensity}} of decode is well below GPU compute-to-bandwidth ' +
+      'ratios — this makes decode fundamentally memory-bandwidth-bound. Throughput scales roughly with ' +
+      '`memory_bandwidth / weight_bytes`.\n\n' +
+      'When choosing GPUs for inference, bandwidth matters more than peak `TFLOPS`. ' +
+      'A GPU with twice the memory bandwidth will produce tokens roughly twice as fast for the same model ' +
+      'at the same precision. This is why datacenter GPUs with high-bandwidth memory (HBM) dramatically ' +
+      'outperform consumer GPUs for inference serving, even when their `TFLOPS` numbers are comparable.',
   },
 
   // ── 05 ── Batch Size and Throughput ─────────────────────────────────
@@ -236,7 +225,7 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
     ],
     briefing:
       'The {{l4|L4}} is Google Cloud\'s most popular inference GPU — 24 GB of memory and modest bandwidth. ' +
-      'At batch size 1, LLaMA 3.1 8B in BF16 generates very few tokens per second — the GPU wastes most of its capacity on a single request.\n\n' +
+      'At batch size 1, LLaMA 3.1 8B in `BF16` generates very few tokens per second — the GPU wastes most of its capacity on a single request.\n\n' +
       'By processing multiple requests simultaneously (batching), you amortize the weight-loading cost ' +
       'across more useful work. Your goal: push throughput above 60 tokens per second.',
     setup: {
@@ -264,7 +253,7 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'At batch size 1, the L4 loads all 16 GB of BF16 weights to produce a single token. With modest bandwidth, single-request throughput is very low — most compute sits idle. Run it and observe.',
+      'At batch size 1, the L4 loads all 16 GB of `BF16` weights to produce a single token. With modest bandwidth, single-request throughput is very low — most compute sits idle. Run it and observe.',
       'Try increasing the batch size to 4, 8, or 16. Each additional request in the batch gets "free" compute because the weights are already being loaded.',
       'Watch the memory utilization as you increase batch size — the KV cache grows linearly with batch size. The L4 has 24 GB total. Weights consume a significant share, leaving limited room for KV cache. The Batch chart shows how throughput scales with batch size across precisions.',
     ],
@@ -295,7 +284,7 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       'it is compute-bound and determines the Time to First Token ({{ttft|TTFT}}). Decode generates output tokens ' +
       'one at a time — it is memory-bandwidth-bound and each step takes Time Per Output Token ({{tpot|TPOT}}). ' +
       'You\'re serving LLaMA 3.1 8B on an {{h100|H100}} at batch size 32. At this batch size, each decode step generates ' +
-      'tokens for all 32 sequences simultaneously, increasing per-token latency. Reduce TPOT below 7 ms by ' +
+      'tokens for all 32 sequences simultaneously, increasing per-token latency. Reduce `TPOT` below 7 ms by ' +
       'understanding what drives per-token latency.',
     setup: {
       modelId: 'llama3.1-8b',
@@ -323,19 +312,19 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'TTFT (Time to First Token) is the latency before the first output token appears. It depends on input length because the entire prompt must be processed. TPOT (Time Per Output Token) is the latency for each subsequent token. The Batch chart shows TTFT (dashed) and TPOT (solid) lines — they diverge at larger batch sizes.',
-      'TPOT at batch size 1 is dominated by memory bandwidth: the GPU must load all model weights to produce each token. Larger batches increase TPOT because each decode step generates tokens for all sequences simultaneously.',
-      'If TPOT is too high, reduce the batch size. At batch=1, the GPU only generates one token per decode step, minimizing per-token latency.',
+      '`TTFT` (Time to First Token) is the latency before the first output token appears. It depends on input length because the entire prompt must be processed. `TPOT` (Time Per Output Token) is the latency for each subsequent token. The Batch chart shows `TTFT` (dashed) and `TPOT` (solid) lines — they diverge at larger batch sizes.',
+      '`TPOT` at batch size 1 is dominated by memory bandwidth: the GPU must load all model weights to produce each token. Larger batches increase `TPOT` because each decode step generates tokens for all sequences simultaneously.',
+      'If `TPOT` is too high, reduce the batch size. At `batch=1`, the GPU only generates one token per decode step, minimizing per-token latency.',
     ],
     successExplanation:
-      'Understanding TTFT vs TPOT is critical for serving design. Interactive applications (chatbots) ' +
-      'care most about TPOT — users perceive the streaming speed of generated text. Batch processing ' +
-      'applications care more about total throughput.\n\nPrefill is compute-bound (benefits from faster FLOPS), ' +
+      'Understanding `TTFT` vs `TPOT` is critical for serving design. Interactive applications (chatbots) ' +
+      'care most about `TPOT` — users perceive the streaming speed of generated text. Batch processing ' +
+      'applications care more about total throughput.\n\nPrefill is compute-bound (benefits from faster `FLOPS`), ' +
       'while decode is bandwidth-bound (benefits from higher memory bandwidth and smaller models). ' +
       'This fundamental asymmetry drives many inference optimization choices.\n\n' +
-      'For long prompts (32K+ tokens), TTFT can be hundreds of milliseconds. Production techniques like ' +
+      'For long prompts (32K+ tokens), `TTFT` can be hundreds of milliseconds. Production techniques like ' +
       'chunked prefill split long prompts into smaller chunks processed across multiple steps, allowing ' +
-      'decode requests to interleave — reducing TTFT variance at the cost of slightly higher average TTFT.',
+      'decode requests to interleave — reducing `TTFT` variance at the cost of slightly higher average `TTFT`.',
   },
 
   // ── 07 ── Flash Attention for Inference ─────────────────────────────
@@ -382,8 +371,8 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
     ],
     successExplanation:
       'Flash Attention is now the default in virtually all production inference systems. ' +
-      'Beyond memory savings, it also accelerates prefill by eliminating O(N²) HBM reads/writes for attention scores — ' +
-      'the attention computation stays in fast on-chip SRAM.\n\nAt 32K tokens, standard attention requires several GB ' +
+      'Beyond memory savings, it also accelerates prefill by eliminating O(N²) `HBM` reads/writes for attention scores — ' +
+      'the attention computation stays in fast on-chip `SRAM`.\n\nAt 32K tokens, standard attention requires several GB ' +
       'just for the score matrix, making it impossible on most GPUs. Flash Attention reduces this to O(N) memory, ' +
       'enabling long-context inference that would otherwise be impossible. ' +
       'At long sequences this can significantly reduce prefill time.',
@@ -405,8 +394,8 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
     briefing:
       'As you learned earlier, the KV cache grows with sequence length and batch size. ' +
       'For large batches or long contexts, the KV cache can dominate total memory usage. ' +
-      'One technique is to store the cached keys and values at lower precision — {{fp8|FP8}} or INT8 — ' +
-      'instead of BF16. Run Qwen 3 14B on a single H100 and keep memory utilization below 75%.',
+      'One technique is to store the cached keys and values at lower precision — `FP8` or `INT8` — ' +
+      'instead of `BF16`. Run Qwen 3 14B on a single H100 and keep memory utilization below 75%.',
     setup: {
       modelId: 'qwen3-14b',
       gpuId: 'h100-sxm',
@@ -434,17 +423,17 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'At BF16 KV precision with batch=48 and seq_len=4096, the KV cache consumes significant memory on top of the model weights — pushing utilization above 75%.',
-      'Try setting KV cache precision to FP8 or INT8 (1 byte per value) — this halves the KV cache memory, allowing you to serve longer sequences or larger batches.',
+      'At `BF16` KV precision with `batch=48` and `seq_len=4096`, the KV cache consumes significant memory on top of the model weights — pushing utilization above 75%.',
+      'Try setting KV cache precision to `FP8` or `INT8` (1 byte per value) — this halves the KV cache memory, allowing you to serve longer sequences or larger batches.',
       'KV cache quantization is especially impactful for GQA models (like Qwen 3) where the cache is already compact. The savings become even more important for MHA models or very long contexts.',
     ],
     successExplanation:
       'KV cache quantization is a complementary technique to weight quantization. ' +
       'While weight quantization reduces the fixed memory cost, KV cache quantization reduces the dynamic, ' +
       'per-request cost.\n\nIn production serving with hundreds of concurrent requests, the KV cache often ' +
-      'exceeds weight memory by 5-10x. Reducing KV cache precision from BF16 to FP8 doubles the number ' +
-      'of concurrent requests a server can handle. Modern inference engines like vLLM support FP8 KV cache ' +
-      'with minimal quality impact. Models with GQA (like LLaMA 3.3 70B with only 8 KV heads vs 64 query ' +
+      'exceeds weight memory by 5-10x. Reducing KV cache precision from `BF16` to `FP8` doubles the number ' +
+      'of concurrent requests a server can handle. Modern inference engines like vLLM support `FP8` KV cache ' +
+      'with minimal quality impact. Models with `GQA` (like LLaMA 3.3 70B with only 8 KV heads vs 64 query ' +
       'heads) already have compact KV caches — quantization provides relative savings regardless of ' +
       'attention type.',
   },
@@ -464,11 +453,11 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       'Know paged attention enables 2-4x more concurrent requests via efficient KV memory allocation',
     ],
     briefing:
-      'In production serving, you face a fundamental tradeoff. Low batch sizes give fast per-token latency (TPOT) ' +
+      'In production serving, you face a fundamental tradeoff. Low batch sizes give fast per-token latency (`TPOT`) ' +
       'but waste GPU bandwidth — the GPU reads all weights to produce few tokens. High batch sizes amortize ' +
       'weight reads across more tokens, improving throughput, but each token takes slightly longer.\n\n' +
-      'You have Qwen 3 14B on a single H100. At batch=1, TPOT is fast but throughput is very low — the GPU wastes most of its bandwidth serving a single request. ' +
-      'Your goal: achieve both TPOT under 15 ms AND throughput above 250 tokens per second. ' +
+      'You have Qwen 3 14B on a single H100. At `batch=1`, `TPOT` is fast but throughput is very low — the GPU wastes most of its bandwidth serving a single request. ' +
+      'Your goal: achieve both `TPOT` under 15 ms AND throughput above 250 tokens per second. ' +
       'Find the batch size sweet spot that satisfies both constraints simultaneously.',
     setup: {
       modelId: 'qwen3-14b',
@@ -486,16 +475,16 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'At batch=1, TPOT is fast but throughput is far below the 250 tok/s target. You need both constraints met simultaneously — look for a batch size that satisfies both.',
-      'Increase batch size gradually. Each additional sequence amortizes the weight read cost, boosting throughput while TPOT increases slowly. There is a sweet spot where both constraints are satisfied. The Batch chart shows how TPOT and throughput change with batch size — use it to find the sweet spot.',
+      'At `batch=1`, `TPOT` is fast but throughput is far below the 250 tok/s target. You need both constraints met simultaneously — look for a batch size that satisfies both.',
+      'Increase batch size gradually. Each additional sequence amortizes the weight read cost, boosting throughput while `TPOT` increases slowly. There is a sweet spot where both constraints are satisfied. The Batch chart shows how `TPOT` and throughput change with batch size — use it to find the sweet spot.',
       'In production, {{paged-attention|paged attention}} eliminates KV cache fragmentation, allowing 2-4× more concurrent requests than naive allocation.',
     ],
     successExplanation:
       'The latency-throughput tradeoff is the central design decision in LLM serving. ' +
-      'Interactive applications (chatbots) prioritize low TPOT for responsive streaming. ' +
+      'Interactive applications (chatbots) prioritize low `TPOT` for responsive streaming. ' +
       'Batch applications prioritize high throughput for cost efficiency.\n\n' +
-      'At batch=1, the GPU reads all weights to produce one token — most compute capacity is wasted. ' +
-      'At batch=4, the same weight read produces 4 tokens, nearly 4× throughput with only a small TPOT increase. ' +
+      'At `batch=1`, the GPU reads all weights to produce one token — most compute capacity is wasted. ' +
+      'At `batch=4`, the same weight read produces 4 tokens, nearly 4× throughput with only a small `TPOT` increase. ' +
       'In production, [PagedAttention (Kwon et al., 2023)](https://arxiv.org/abs/2309.06180) eliminates KV cache fragmentation, allowing serving systems like vLLM ' +
       'to handle 2-4× more concurrent requests than naive allocation.',
   },

@@ -138,7 +138,7 @@ describe('Game store — acknowledgeSuccess', () => {
     useGameStore.getState().acknowledgeSuccess();
 
     const state = useGameStore.getState();
-    expect(state.activeTaskId).toBe('training-beginner-02');
+    expect(state.activeTaskId).toBe('training-beginner-03');
     expect(state.progress['training-beginner']).toContain('training-beginner-01');
     expect(state.hintsRevealed).toBe(0);
     expect(state.attempts).toBe(0);
@@ -365,7 +365,7 @@ describe('Game store — per-task state preservation', () => {
       lastValidation: winValidation,
     });
     // Should have advanced to next task
-    expect(state.activeTaskId).toBe('training-beginner-02');
+    expect(state.activeTaskId).toBe('training-beginner-03');
   });
 
   it('taskStates is persisted to localStorage', () => {

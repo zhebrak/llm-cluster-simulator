@@ -11,10 +11,17 @@ import type { GameMode, GameDifficulty } from '../../game/types.ts';
 const MODES: GameMode[] = ['training', 'inference'];
 const DIFFICULTIES: GameDifficulty[] = ['beginner', 'intermediate', 'advanced'];
 
-const DIFFICULTY_DESCRIPTIONS: Record<GameDifficulty, string> = {
-  beginner: 'Single GPU basics, memory, precision, and DDP',
-  intermediate: 'TP, PP, 2D parallelism, and MoE',
-  advanced: '3D parallelism, EP, CP, and real configs',
+const DIFFICULTY_DESCRIPTIONS: Record<GameMode, Record<GameDifficulty, string>> = {
+  training: {
+    beginner: 'Memory, precision, and scaling to multi-node clusters',
+    intermediate: 'Tensor, pipeline, and sequence parallelism in depth',
+    advanced: 'Real-world configs, fine-tuning, and full-scale optimization',
+  },
+  inference: {
+    beginner: 'Weight memory, KV cache, and latency-throughput tradeoffs',
+    intermediate: 'Multi-GPU serving, GPU selection, and speculative decoding',
+    advanced: 'Production MoE serving, latency SLAs, and cost optimization',
+  },
 };
 
 const DIFFICULTY_COLORS: Record<GameDifficulty, string> = {
@@ -63,11 +70,7 @@ function LevelCard({ mode, difficulty }: { mode: GameMode; difficulty: GameDiffi
         )}
       </div>
       <div className="text-xs text-gray-400 mb-3 hidden sm:block">
-        {mode === 'training'
-          ? DIFFICULTY_DESCRIPTIONS[difficulty]
-          : difficulty === 'beginner' ? 'Weight memory, KV cache, batching, and latency'
-          : difficulty === 'intermediate' ? 'TP for inference, speculative decoding, FP8'
-          : 'MoE serving, multi-replica, cost optimization'}
+        {DIFFICULTY_DESCRIPTIONS[mode][difficulty]}
       </div>
       <div className="flex items-center gap-2 mt-2 sm:mt-0">
         <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">

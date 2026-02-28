@@ -286,7 +286,7 @@ const INFERENCE_PRESETS: InferencePresetCase[] = [
     batchSize: 16, inputSeqLen: 1024, outputSeqLen: 512,
     weightPrecision: 'bf16', kvCachePrecision: 'bf16',
     flashAttention: true, tensorParallel: 4,
-    pinned: { ttft: 1462.15, tpot: 13.292, throughputTps: 990.8 },
+    pinned: { ttft: 1476.06, tpot: 14.075, throughputTps: 943.5 },
   },
   {
     name: 'Qwen3 235B-A22B (4× H200)',
@@ -295,7 +295,7 @@ const INFERENCE_PRESETS: InferencePresetCase[] = [
     batchSize: 32, inputSeqLen: 1024, outputSeqLen: 512,
     weightPrecision: 'fp8', kvCachePrecision: 'fp8',
     flashAttention: true, tensorParallel: 4,
-    pinned: { ttft: 455.21, tpot: 13.756, throughputTps: 2185.0 },
+    pinned: { ttft: 455.21, tpot: 14.358, throughputTps: 2098.8 },
   },
   {
     name: 'LLaMA 3.3 70B INT4 (1× H200)',

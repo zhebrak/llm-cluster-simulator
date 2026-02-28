@@ -626,8 +626,10 @@ describe('Validation acceptance and rejection', () => {
     expect(result.recommendations.some(r => r.includes('increasing batch size'))).toBe(true);
   });
 
-  it('validated TP reduction is rejected when it would hurt throughput', () => {
-    // TP=2 on 70B fp8: reducing to TP=1 means weights don't fit well
+  it('validated TP reduction is accepted when replicas improve throughput', () => {
+    // TP=2 on 70B fp8: reducing to TP=1 creates 2 replicas (each 70 GB on 80 GB).
+    // 2 replicas at TP=1 beat 1 replica at TP=2 in throughput: 2× aggregate HBM
+    // bandwidth with slightly higher per-GPU efficiency (larger reads).
     const result = runInferenceSimulation({
       modelId: 'llama3-70b',
       gpu: H100_SXM,
@@ -640,10 +642,7 @@ describe('Validation acceptance and rejection', () => {
       tensorParallel: 2,
     });
     if (result.success) {
-      // TP reduction from 2→1 for 70B: weights=70GB on 80GB, barely fits.
-      // 1 replica at TP=1 vs 1 replica at TP=2 — TP=2 has higher bandwidth.
-      // Validation should reject reducing TP here.
-      expect(result.recommendations.some(r => r.includes('reducing tensor parallelism'))).toBe(false);
+      expect(result.recommendations.some(r => r.includes('reducing tensor parallelism'))).toBe(true);
     }
   });
 });

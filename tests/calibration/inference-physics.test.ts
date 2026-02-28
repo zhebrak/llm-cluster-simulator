@@ -81,8 +81,10 @@ describe('TP scaling efficiency', () => {
     const tpotRatio = r8.latency.tpot / r2.latency.tpot;
     expect(ttftRatio).toBeGreaterThan(0.20);
     expect(ttftRatio).toBeLessThan(0.40);
-    // TTFT ratio >= TPOT ratio (TTFT scales slightly worse, allreduce proportionally larger)
-    expect(ttftRatio).toBeGreaterThanOrEqual(tpotRatio * 0.95);
+    // TTFT and TPOT scale similarly. Per-GPU bandwidth efficiency means TPOT scaling
+    // degrades at high TP (smaller per-GPU reads → lower HBM utilization), so TTFT
+    // can scale better than TPOT for some configurations.
+    expect(ttftRatio).toBeGreaterThanOrEqual(tpotRatio * 0.85);
   });
 });
 
