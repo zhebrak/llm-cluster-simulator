@@ -128,6 +128,11 @@ export function kvCacheFragmentationFactor(actualSeqLen: number, maxSeqLen: numb
   return Math.min(maxSeqLen / actualSeqLen, KV_CACHE_FRAGMENTATION_CAP);
 }
 
+let _memoryOverheadFactor = 0.10;
+export function getMemoryOverheadFactor(): number { return _memoryOverheadFactor; }
+export function setMemoryOverheadFactor(v: number) { _memoryOverheadFactor = v; }
+export function resetInferenceMemoryParams(): void { _memoryOverheadFactor = 0.10; }
+
 /**
  * Calculate CUDA/framework memory overhead
  * Typically 5-15% of model + KV cache memory
@@ -135,7 +140,7 @@ export function kvCacheFragmentationFactor(actualSeqLen: number, maxSeqLen: numb
 export function calculateOverhead(
   weightsMemory: number,
   kvCacheMemory: number,
-  overheadFactor: number = 0.1
+  overheadFactor: number = _memoryOverheadFactor
 ): number {
   return (weightsMemory + kvCacheMemory) * overheadFactor;
 }

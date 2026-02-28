@@ -38,7 +38,6 @@ The physics model is calibrated against published training runs.
 | LLaMA 3.1 405B 131K | 16384× H100 | 3D + CP16 | 37.2%\* | 38%\* | [Meta](https://arxiv.org/abs/2407.21783) Table 4 |
 | DeepSeek V3 671B FP8 | 2048× H800 | 3D + EP32 | 44.7% | 43.7% | [DeepSeek](https://arxiv.org/abs/2412.19437) §3.1 |
 | Nemotron-4 340B | 6144× H100 | 3D (TP8 PP12) | 41.2% | 41-42% | [NVIDIA](https://developer.nvidia.com/blog/train-generative-ai-models-more-efficiently-with-new-nvidia-megatron-core-functionalities/) Table 2 |
-| GPT-3 175B | 1024× A100 | 3D (TP8 PP8) | 43.2% | 44.2% | [Megatron-LM](https://arxiv.org/abs/2104.04473) §5.1 |
 | OLMo 3 32B | 1024× H100 | FSDP (DP=1024) | 43.4% | ~41% | [OLMo 3](https://arxiv.org/abs/2512.13961) (selective AC) |
 
 \* Model FLOPs MFU — quadratic attention FLOPs at long sequences ([Benchmarks](docs/BENCHMARKS.md))

@@ -276,7 +276,8 @@ export class FSDPStrategy extends ParallelismStrategy {
     const { effectiveTFLOPS } = computeComputeEfficiency(model, tokensPerMicroBatch, gpu, computeDtype);
 
     // Non-matmul overhead (memory-bandwidth-bound ops: norms, activations, residual adds)
-    const nonMatmulPerMB = computeNonMatmulTimeMs(model, tokensPerMicroBatch, gpu);
+    const nonMatmulPerMB = computeNonMatmulTimeMs(model, tokensPerMicroBatch, gpu,
+      { flashAttention: ctx.flashAttention, seqLength, microBatchSize });
 
     // QLoRA dequantization time (bandwidth-bound, added to forward)
     const dequantTime = ctx.lora?.method === 'qlora'
@@ -366,6 +367,10 @@ export class FSDPStrategy extends ParallelismStrategy {
       backwardPrefetch: this.config.backwardPrefetch,
     });
 
+    // Communication per micro-batch: AllGather(fwd) + AllGather(bwd) + ReduceScatter(bwd).
+    // Real FSDP with no_sync() skips ReduceScatter on non-final micro-batches (GA>1),
+    // but the savings are negligible in the compute-bound regime — per-layer pipelining
+    // already hides ~95% of communication, and the RS cold-start delta is < 0.2% of step time.
     const communicationTime = commTimePerMB * gradientAccumulationSteps;
     const overlap = communicationTime - exposedPerMB * gradientAccumulationSteps;
 

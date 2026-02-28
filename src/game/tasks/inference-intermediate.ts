@@ -11,11 +11,11 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 0,
     title: 'Tensor Parallelism for Large Models',
-    concept: 'Splitting model weights across GPUs with tensor parallelism',
+    concept: 'Multi-GPU weight distribution',
     learningObjectives: [
       'Use TP to serve models exceeding single-GPU memory (70B needs ~140 GB in BF16)',
       'Know TP splits weight matrices so each GPU stores and computes 1/TP of weights',
-      'Understand TP requires NVLink for efficient AllReduce at every transformer layer',
+      'Understand TP requires a fast intra-node interconnect (e.g. NVLink) for efficient AllReduce at every transformer layer',
     ],
     briefing:
       'You need to serve LLaMA 3.3 70B for real-time inference. At 140 GB in BF16, the model does not fit on a single 80 GB H100. ' +
@@ -30,6 +30,11 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
       { field: 'memoryUtilization', operator: '<', value: 1.0, label: 'Model fits in GPU memory' },
+    ],
+    expectedChanges: [
+      { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'A 70B parameter model in BF16 needs roughly 140 GB just for weights. A single 80 GB GPU cannot hold it.',
@@ -71,16 +76,21 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
       { field: 'latency.tpot', operator: '<', value: 8.0, label: 'TPOT < 8 ms' },
     ],
+    expectedChanges: [
+      { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'Decode is memory-bandwidth bound: TPOT is proportional to weight bytes read per GPU. Doubling TP halves the weight reads.',
       'Higher TP reduces TPOT by splitting weight reads across GPUs, but each doubling adds more AllReduce overhead. Try different TP values and observe the diminishing returns.',
       'Higher TP degrees will meet the target. The diminishing returns at high TP are because communication overhead grows. The Pareto frontier (TPOT tab) shows cost-latency tradeoffs across configurations.',
     ],
     successExplanation:
-      'Decode latency is dominated by reading model weights from HBM. With `TP=8`, each GPU reads only 1/8 of the weights per step, ' +
-      'cutting the memory-bandwidth time roughly 8x compared to a single GPU.\n\nThe AllReduce overhead (exchanging activations at ' +
-      'every layer) grows with TP degree, but NVLink is fast enough that the net effect is still a large latency reduction. ' +
-      'Beyond `TP=8`, communication starts to dominate and returns diminish rapidly.',
+      'Decode latency is dominated by reading model weights from HBM. Higher TP reduces per-GPU weight reads proportionally — ' +
+      'each doubling of TP halves the memory-bandwidth time per decode step.\n\nThe AllReduce overhead (exchanging activations at ' +
+      'every layer) grows with TP degree, but a high-bandwidth intra-node interconnect keeps the net effect as a large latency reduction. ' +
+      'At some point, communication starts to dominate and returns diminish rapidly.',
   },
 
   // ── 3. Serving LLaMA 3.1 405B ──────────────────────────────────────
@@ -90,7 +100,7 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 2,
     title: 'Serving a 405B Parameter Model',
-    concept: 'Fitting very large models using quantization and tensor parallelism',
+    concept: 'Memory constraints at extreme scale',
     learningObjectives: [
       'Combine TP and quantization to fit models with 800+ GB weights',
       'Know FP8 has native H100 support (Transformer Engine) with ~0.5% quality loss',
@@ -100,7 +110,7 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
       'Your team needs to deploy LLaMA 3.1 405B for inference. In BF16, the model weighs over 800 GB — far too large ' +
       'even for 8 H100 GPUs with TP=8 (640 GB total HBM). ' +
       'You need to combine tensor parallelism with weight quantization to fit this model. ' +
-      'Explore {{fp8|FP8}}, INT8, or INT4 weight precision along with TP=8 to make it work.',
+      'Combine tensor parallelism with weight quantization to make it fit.',
     setup: {
       modelId: 'llama3-405b',
       gpuId: 'h100-sxm',
@@ -109,6 +119,12 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
+    ],
+    expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'At BF16 (2 bytes/param), 405B parameters require far more memory than 8 GPUs can provide even with TP=8. Calculate the per-GPU weight memory to see why.',
@@ -122,47 +138,55 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
       'dequantization overhead. INT4 would reduce memory even further but at greater quality cost.',
   },
 
-  // ── 4. MoE Inference ───────────────────────────────────────────────
+  // ── 4. When TP Wastes GPUs ─────────────────────────────────────────
   {
     id: 'inference-intermediate-04',
     mode: 'inference',
     difficulty: 'intermediate',
     order: 3,
-    title: 'Mixture-of-Experts Inference',
-    concept: 'Active vs total parameters in MoE models',
+    title: 'When TP Wastes GPUs',
+    concept: 'Over-sharding and replicas vs tensor parallelism',
     learningObjectives: [
-      'Understand MoE memory = total params (all experts resident), compute = active params per token',
-      'Know MoE is more memory-bandwidth-bound than a dense model with the same active size',
-      'Recognize the memory-compute decoupling as the key advantage of MoE architecture',
+      'Know that over-sharding with TP makes AllReduce overhead dominate when per-GPU weights are small',
+      'Understand replicas provide linear throughput scaling with zero communication overhead',
+      'Recognize the tradeoff: TP reduces latency per request, replicas maximize aggregate throughput',
     ],
     briefing:
-      'Mixtral 8x7B has 47B total parameters but only activates ~13B per token through its top-2 {{router|routing}} across 8 experts. ' +
-      'Despite the total parameter count, {{moe|MoE}} inference has a unique property: compute cost scales with {{active-params|active parameters}}, ' +
-      'but memory must hold all expert weights. ' +
-      'You have 2 H100 GPUs. Configure tensor parallelism so the full model fits in memory and runs successfully.',
+      'You have LLaMA 3.1 8B on 8 H100 GPUs with TP=8 and batch=1. Each GPU holds only 1/8 of the model — ' +
+      'about 2 GB of weights. The per-GPU weight read is nearly instant, but the AllReduce ' +
+      'across all 8 ranks at every layer adds significant overhead.\n\n' +
+      'When a model easily fits on fewer GPUs, maximum TP wastes most of the GPU time on communication. ' +
+      'Find a configuration that achieves over 1000 tokens per second aggregate throughput.',
     setup: {
-      modelId: 'mixtral-8x7b',
+      modelId: 'llama3.1-8b',
       gpuId: 'h100-sxm',
-      numGPUs: 2,
-      gpusPerNode: 2,
+      numGPUs: 8,
+      gpusPerNode: 8,
+      tensorParallel: 8,
+      batchSize: 1,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
+      { field: 'throughput.tokensPerSecond', operator: '>', value: 1000, label: 'Throughput > 1000 tok/s' },
+    ],
+    expectedChanges: [
+      { field: 'tensorParallel', check: 'decreased', label: 'Decreased tensor parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'Mixtral 8x7B has 47B total parameters. At BF16, that is ~94 GB — too large for one 80 GB GPU.',
-      'With TP=2, each GPU stores half the total weights. Check whether that fits within 80 GB with room for KV cache and activations.',
-      'Although only ~13B parameters are active per token (lower compute), all 47B must reside in GPU memory because any expert might be selected.',
+      'LLaMA 8B in BF16 is ~16 GB — it fits easily on a single 80 GB GPU. With TP=8, each GPU holds only ~2 GB of weights. The weight read is nearly instant, but 8-way AllReduce at every layer is not.',
+      'Reducing TP creates independent replicas: TP=4 gives 2 replicas, TP=2 gives 4, TP=1 gives 8. Each replica runs without any communication overhead. Total throughput = per-replica throughput × number of replicas.',
+      'Try different TP values and watch aggregate throughput. The sweet spot balances per-replica speed (some TP helps) against replica count (more replicas = more parallelism).',
     ],
     successExplanation:
-      'MoE models decouple compute from memory: the router selects a small subset of experts per token (active params), ' +
-      'but all expert weights must be stored in GPU memory because routing is input-dependent. Mixtral has 47B total / ~13B active params.\n\n' +
-      'Memory sizing uses total params (`47B × 2 bytes` = ~94 GB), while FLOPs use active params (~13B). ' +
-      'This means MoE models offer better compute-per-parameter than dense models, but memory requirements still scale with total size.\n\n' +
-      'MoE models also interact with attention architecture choices. Mixtral uses GQA (8 KV heads vs 32 ' +
-      'query heads), keeping KV cache compact relative to its 47B total params. DeepSeek V2/V3 use ' +
-      'Multi-Latent Attention (MLA), compressing KV cache even further by projecting keys and values into ' +
-      'a low-rank latent space.',
+      'With TP=8, each GPU reads only ~2 GB of weights per decode step — nearly instant on high-bandwidth HBM. But the AllReduce ' +
+      'communication after every layer adds overhead that dominates the tiny compute time. The result: 8 GPUs produce ' +
+      'fewer tokens than they could as independent replicas.\n\n' +
+      'Reducing TP frees GPUs to run independent model replicas. Each replica processes its own requests with zero ' +
+      'communication overhead, and total throughput scales linearly with replica count. ' +
+      'This is the fundamental distinction between latency-oriented serving (max TP, lowest TPOT per request) ' +
+      'and throughput-oriented serving (min viable TP, max replicas for aggregate tokens/sec).',
   },
 
   // ── 5. KV Cache at Scale ───────────────────────────────────────────
@@ -172,19 +196,22 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 4,
     title: 'KV Cache Memory at Long Contexts',
-    concept: 'Managing KV cache memory with KV cache quantization',
+    concept: 'Dynamic memory pressure at scale',
     learningObjectives: [
       'Understand KV cache at long contexts with high batch can exceed available GPU memory',
       'Know KV cache quantization (FP8/INT8) halves dynamic per-request memory',
       'Recognize KV cache precision as an independent lever from weight precision',
+      'Understand batch amortization: more concurrent sequences per decode step = higher throughput',
+      'Know that freeing KV memory through quantization unlocks higher batch sizes',
     ],
     briefing:
       'You are building a long-context document analysis service with LLaMA 3.3 70B on 4 H100 GPUs. ' +
       'The current config uses TP=4, batch=32, and 16K input sequences — but it OOMs. The {{kv-cache|KV cache}} ' +
       'for 32 concurrent sequences at 16,640 tokens each is enormous, ' +
       'pushing total memory beyond 80 GB per GPU.\n\n' +
-      'Your task: make this configuration fit in memory. ' +
-      'The KV cache is the bottleneck — manage it.',
+      'Your task: achieve over 135 tokens/sec throughput while fitting in memory. ' +
+      'Simply reducing batch size loses too much throughput — you need to manage the KV cache ' +
+      'AND maintain a high batch size.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -197,18 +224,25 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 100, label: 'Throughput > 100 tok/s' },
+      { field: 'throughput.tokensPerSecond', operator: '>', value: 135, label: 'Throughput > 135 tok/s' },
+    ],
+    expectedChanges: [
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'The model weights fit at TP=4, but the KV cache for 32 sequences at 16K context pushes memory over the limit. Look for a way to reduce KV cache memory.',
-      'KV cache precision is independent of weight precision — reduce KV cache bytes per element to halve the dynamic memory.',
+      'The model weights fit at TP=4, but the KV cache for 32 sequences at 16K context pushes memory over the limit. Reducing batch size fits but throughput drops below the target.',
+      'KV cache precision is independent of weight precision — quantizing KV to FP8 halves the dynamic memory. The freed memory lets you keep the batch size high.',
+      'This is a two-step optimization: (1) free memory via KV cache quantization, then (2) exploit that headroom to maintain or increase batch size for throughput.',
     ],
     successExplanation:
       'KV cache memory = `numLayers × numKVHeads × headDim × seqLen × batchSize × 2 (K and V) × bytesPerElement`. ' +
       'For LLaMA 3.3 70B at 16K context, each request\'s KV cache is several GB. Batching multiplies this linearly.\n\n' +
+      'Simply reducing batch size fits in memory but sacrifices throughput — each decode step reads all model weights ' +
+      'regardless of batch size, so fewer sequences per step means less work per weight read.\n\n' +
       'KV cache quantization (FP8 or INT8) halves the bytes per element, directly halving the dynamic memory. ' +
-      'This is independent of weight precision — you can run FP8 KV cache alongside BF16 weights. ' +
-      'In production, KV cache quantization is standard because the quality impact on attention scores is minimal.',
+      'This frees enough headroom to keep batch=32 (or higher), maintaining the throughput benefit of batch amortization. ' +
+      'The pattern — free memory, then exploit it for batch — is standard in production serving.',
   },
 
   // ── 6. Batch Throughput ────────────────────────────────────────────
@@ -223,34 +257,44 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
       'Understand weight reads are constant per step regardless of batch size',
       'Know throughput becomes sub-linear at very large batches (KV cache reads grow with batch)',
       'Target throughput-optimized configs for high-QPS serving workloads',
+      'Recognize the throughput-latency tension: excessive batching degrades per-request TPOT',
     ],
     briefing:
-      'Your inference cluster needs to handle high request volume. With LLaMA 3.3 70B on 8 H100 GPUs ' +
-      'and TP=8 already configured, a single request generates ~158 tokens/sec. But the {{decode}} phase is ' +
+      'Your inference cluster needs to handle high request volume. With LLaMA 3.3 70B on 8 {{a100|A100}}-80GB GPUs ' +
+      'and TP=8 already configured, a single request generates relatively few tokens per second. But the {{decode}} phase is ' +
       'memory-bandwidth bound — the GPU reads all model weights for every single token, regardless of batch size. ' +
-      'By batching multiple requests, you amortize the weight read cost across sequences. ' +
-      'Find a batch size that achieves over 2k tok/s total throughput.',
+      'By batching multiple requests, you amortize the weight read cost across sequences.\n\n' +
+      'Your SLA requires TPOT under 15 ms per token AND throughput above 1200 tok/s. ' +
+      'Blindly maximizing batch size will violate the latency constraint.',
     setup: {
       modelId: 'llama3.3-70b',
-      gpuId: 'h100-sxm',
+      gpuId: 'a100-80gb',
       numGPUs: 8,
       gpusPerNode: 8,
       tensorParallel: 8,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 2000, label: 'Throughput > 2k tok/s' },
+      { field: 'throughput.tokensPerSecond', operator: '>', value: 1200, label: 'Throughput > 1200 tok/s' },
+      { field: 'latency.tpot', operator: '<', value: 15, label: 'TPOT < 15 ms' },
+    ],
+    expectedChanges: [
+      { field: 'batchSize', check: 'increased', label: 'Increased batch size' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'At batch=1, each decode step reads all weights to produce one token. At batch=N, the same weight read produces N tokens. Increase the batch size.',
-      'Throughput scales nearly linearly with batch size in the memory-bound regime. Watch for memory limits as KV cache grows.',
+      'At batch=1, each decode step reads all weights to produce one token. At batch=N, the same weight read produces N tokens. But very high batch sizes push TPOT above the SLA.',
+      'There is a productive range of batch sizes that satisfy both constraints. Try moderate values and watch both throughput and TPOT — the sweet spot is where throughput exceeds the target while TPOT remains under the ceiling.',
     ],
     successExplanation:
       'Decode is memory-bandwidth bound: the GPU must read all model weights from HBM every decode step. ' +
       'At batch=1, one weight read produces one token. At batch=N, the same weight read produces N tokens — ' +
-      'throughput scales nearly linearly.\n\nThe limit comes from KV cache: each sequence adds its own KV cache to the read, ' +
-      'and GPU memory eventually fills up. In practice, throughput grows sub-linearly at very large batches because ' +
-      'KV cache reads become significant relative to weight reads.',
+      'throughput scales nearly linearly in the memory-bound regime.\n\n' +
+      'But at very high batch sizes, KV cache reads per step grow large enough to compete with weight reads for bandwidth. ' +
+      'TPOT rises because each decode step takes longer, even though throughput still increases. ' +
+      'The productive range is where throughput meets the target AND TPOT stays under the SLA — ' +
+      'this is the fundamental tension in production serving between maximizing throughput and honoring latency guarantees.',
   },
 
   // ── 7. Latency Optimization ────────────────────────────────────────
@@ -260,39 +304,53 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 6,
     title: 'Minimizing Per-Token Latency',
-    concept: 'Optimizing TPOT for real-time applications',
+    concept: 'Optimizing TPOT and cost on consumer GPUs',
     learningObjectives: [
       'Know TPOT ~ weight_bytes / (memory_bandwidth x efficiency) in the bandwidth-bound regime',
       'Identify three TPOT levers: TP (split weights), quantization (fewer bytes), small batch (less KV reads)',
-      'Understand the fundamental tension: latency optimization (batch=1, max TP) vs throughput optimization (large batch)',
+      'Understand cost per token = (GPU_cost × num_GPUs) / throughput — batching is the cost lever',
+      'Recognize the three-way tension: latency (low batch, high TP), throughput (high batch), and cost (amortize GPU time)',
     ],
     briefing:
-      'You are building a real-time coding assistant that needs fast token generation for responsive streaming. ' +
-      'The target is under 15 ms per output token (TPOT) with LLaMA 3.3 70B on 4 H100 GPUs. ' +
-      'TPOT is determined by how fast GPUs can read model weights from HBM during the memory-bound decode phase. ' +
-      'Explore tensor parallelism, batch size, and weight precision to minimize TPOT.',
+      'You are building a real-time coding assistant using 4 {{rtx-4090|RTX 4090}} GPUs connected via {{pcie|PCIe}}. ' +
+      'LLaMA 3.3 70B at BF16 requires ~140 GB — far more than 4 × 24 GB = 96 GB. ' +
+      'You need aggressive quantization (INT4: ~35 GB total) to fit the model across 4 GPUs with TP=4.\n\n' +
+      'You have two constraints: TPOT under 25 ms for responsiveness, AND cost under $4 per million tokens ' +
+      'for economic viability. Meeting the latency target alone is not enough — at batch=1, the GPUs ' +
+      'spend most of their time idle between requests, making per-token cost very high.',
     setup: {
       modelId: 'llama3.3-70b',
-      gpuId: 'h100-sxm',
+      gpuId: 'rtx-4090',
       numGPUs: 4,
       gpusPerNode: 4,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
-      { field: 'latency.tpot', operator: '<', value: 15.0, label: 'TPOT < 15 ms' },
+      { field: 'latency.tpot', operator: '<', value: 25.0, label: 'TPOT < 25 ms' },
+      { field: 'costPerMillionTokens', operator: '<', value: 4.0, label: 'Cost < $4/M tokens' },
+    ],
+    expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
+      { field: 'batchSize', check: 'increased', label: 'Increased batch size' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'TPOT is proportional to weight bytes read per GPU. Higher TP reduces per-GPU weights. Lower precision reduces bytes per parameter.',
-      'With TP=4 at BF16, TPOT is close to the target. Keep batch size at 1 for lowest latency (no extra KV cache reads).',
-      'Using FP8 with TP=4 roughly halves TPOT by halving the bytes read per weight. But TP=4 at BF16 with batch=1 may also meet the target — try it first.',
+      'At BF16, 70B requires ~140 GB — it does not fit on 4 × 24 GB GPUs even with TP=4. INT4 (0.5 bytes/param) dramatically reduces weight memory. The RTX 4090 has no FP8 support — INT4 or INT8 are the quantization options.',
+      'INT4 + TP=4 meets the latency target, but at batch=1 the cost is very high. Each decode step reads all weights to produce only one token — the GPU time per token is expensive.',
+      'Increasing batch size amortizes the GPU cost across multiple sequences per step. A modest increase keeps TPOT well under the ceiling while dramatically reducing cost per token.',
     ],
     successExplanation:
-      'TPOT in the memory-bound regime equals `weight_bytes / (memory_bandwidth × efficiency)`. ' +
-      'Three levers reduce it: (1) TP splits weights across GPUs, reducing per-GPU reads proportionally. ' +
-      '(2) Quantization (FP8/INT8) halves bytes per parameter. (3) Small batch sizes minimize additional KV cache reads.\n\n' +
-      'For real-time applications, the priority is low latency per token (small batch, high TP) rather than high throughput ' +
-      '(large batch). There is a fundamental tension: latency optimization (`batch=1`, max TP) wastes GPU compute, ' +
-      'while throughput optimization (large batch) increases per-token latency.',
+      'Running 70B models on 4 RTX 4090 GPUs is one of the most popular hobbyist and startup setups. ' +
+      'The key constraints are: (1) 24 GB per GPU requires INT4 quantization to fit, ' +
+      '(2) PCIe interconnect adds significant TP AllReduce overhead, ' +
+      'and (3) the RTX 4090 lacks FP8 support, so INT4/INT8 are the only quantization options.\n\n' +
+      'Meeting the latency target alone (INT4 + TP=4 + batch=1) is straightforward, but cost per token is high ' +
+      'because each decode step produces only one token while paying for 4 GPUs. Increasing batch amortizes ' +
+      'the GPU cost across multiple sequences — each additional request in the batch adds minimal TPOT ' +
+      'overhead but proportionally reduces cost per token. This three-way optimization (latency + cost + memory) ' +
+      'is the core engineering problem for consumer GPU serving.',
   },
 
   // ── 8. GPU Selection ───────────────────────────────────────────────
@@ -305,18 +363,19 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     concept: 'Memory bandwidth as the key GPU metric for decode performance',
     learningObjectives: [
       'Know memory bandwidth is the critical GPU spec for decode, not compute TFLOPS',
-      'Compare GPUs by bandwidth: H100 SXM (3.35 TB/s) vs A100 (2.0 TB/s)',
+      'Compare GPUs by memory bandwidth — higher bandwidth means faster decode',
       'Understand arithmetic intensity for decode is far below the GPU roofline — bandwidth is the bottleneck',
     ],
     briefing:
       'You want to serve Qwen 3 14B on a single GPU and need at least 120 tokens/sec throughput. ' +
+      'You start on an {{a10g|A10G}} — the most popular AWS inference GPU with 24 GB of memory and ' +
+      'relatively low memory bandwidth. Even with quantization, decode throughput is limited.\n\n' +
       'For inference, the GPU spec that matters most during decode is not compute (TFLOPS) but memory bandwidth — ' +
       'because decode reads all weights every step and does minimal computation per byte. ' +
-      'You start with an H100 SXM — observe baseline, then switch to other GPUs to understand how ' +
-      'memory bandwidth affects decode throughput. Find a configuration that exceeds 120 tokens/sec.',
+      'Find a GPU and configuration that exceeds 120 tokens per second.',
     setup: {
       modelId: 'qwen3-14b',
-      gpuId: 'h100-sxm',
+      gpuId: 'a10g',
       numGPUs: 1,
       gpusPerNode: 1,
     },
@@ -324,15 +383,20 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
       { field: 'throughput.tokensPerSecond', operator: '>', value: 120, label: 'Throughput > 120 tok/s' },
     ],
+    expectedChanges: [
+      { field: 'gpuId', check: 'changed', label: 'Changed GPU type' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+    ],
     hints: [
-      'Qwen 3 14B in BF16 fits on any 80 GB GPU. The question is how fast each GPU can read those weights — memory bandwidth is the deciding spec for decode throughput.',
-      'Compare the memory bandwidth of different GPUs. Higher bandwidth means faster weight reads and higher decode throughput. The throughput difference between GPUs is roughly proportional to their bandwidth ratio.',
-      'If a single GPU at BF16 batch=1 falls short of the throughput target, try weight quantization (INT8 or FP8) to halve weight reads, or increase batch size to amortize them.',
+      'The A10G has relatively low memory bandwidth. Even with aggressive quantization, single-request decode throughput is modest. Try other GPUs with higher bandwidth.',
+      'Compare memory bandwidth across GPUs — decode throughput is roughly proportional to bandwidth. Check the GPU specs in the sidebar to find higher-bandwidth options.',
+      'A high-bandwidth GPU with quantization (INT8 or FP8) can easily exceed 120 tok/s. The key insight: bandwidth, not TFLOPS, determines decode speed.',
     ],
     successExplanation:
-      'For single-request decode, throughput is approximately: `params × bytes_per_param / (bandwidth × efficiency)`. ' +
-      'The H100 SXM (3.35 TB/s bandwidth) reads 28 GB of weights in ~11 ms, giving ~86 tok/s. ' +
-      'The A100 80GB (2.0 TB/s) takes ~17 ms, giving ~56 tok/s.\n\nBoth GPUs have enormous compute capacity (hundreds of TFLOPS), ' +
+      'The A10G is affordable and popular on AWS, but its modest bandwidth caps decode throughput. ' +
+      'For single-request decode: throughput ≈ `1 / (weight_bytes / bandwidth)`. ' +
+      'A higher-bandwidth GPU reads the same weight bytes much faster, producing proportionally more tokens per second. ' +
+      'The throughput difference between GPUs is roughly proportional to their bandwidth ratio.\n\nBoth GPUs have significant compute capacity, ' +
       'but compute is almost irrelevant for batch=1 decode — the arithmetic intensity (FLOPs per byte read) is far below ' +
       'the GPU\'s ridge point. Memory bandwidth is the bottleneck, making it the single most important GPU spec for inference.',
   },
@@ -344,7 +408,7 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 8,
     title: 'Speculative Decoding',
-    concept: 'Using a small draft model to speed up large model decoding',
+    concept: 'Accelerating autoregressive generation',
     learningObjectives: [
       'Understand draft-verify paradigm: small model proposes K tokens, large model verifies in one forward pass',
       'Know verification of K tokens costs ~1 target forward pass (same compute, K+1 positions)',
@@ -365,6 +429,11 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
       { field: 'latency.tpot', operator: '<', value: 9, label: 'TPOT < 9 ms' },
+    ],
+    expectedChanges: [
+      { field: 'speculativeDecoding', check: 'enabled', label: 'Enabled speculative decoding' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'First set TP so the 70B model fits in memory. Then enable Speculative Decoding and select a draft model.',
@@ -388,7 +457,7 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 9,
     title: 'FP8 Quantized Inference',
-    concept: 'Halving weight memory reads with FP8 precision',
+    concept: 'Hardware-native reduced precision',
     learningObjectives: [
       'Know FP8 halves bandwidth requirement, yielding ~2x decode throughput on H100',
       'Understand FP8 dequantization is handled natively by Transformer Engine on Hopper GPUs',
@@ -408,6 +477,11 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
       { field: 'throughput.tokensPerSecond', operator: '>', value: 120, label: 'Throughput > 120 tok/s' },
+    ],
+    expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'At BF16, throughput is below the target even with TP. The bottleneck is memory bandwidth: each GPU reads a large share of the weights every decode step.',

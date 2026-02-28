@@ -48,12 +48,12 @@ function LevelCard({ mode, difficulty }: { mode: GameMode; difficulty: GameDiffi
   return (
     <button
       onClick={handleClick}
-      className={`text-left p-4 rounded-lg border bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer ${
+      className={`text-left p-2.5 sm:p-4 rounded-lg border bg-gray-800/50 hover:bg-gray-700/50 transition-colors cursor-pointer ${
         isComplete ? 'border-green-500/40' : DIFFICULTY_COLORS[difficulty].split(' ')[1]
       }`}
     >
       <div className="flex items-center justify-between mb-2">
-        <span className={`text-sm font-medium ${DIFFICULTY_COLORS[difficulty].split(' ')[0]}`}>
+        <span className={`text-xs sm:text-sm font-medium ${DIFFICULTY_COLORS[difficulty].split(' ')[0]}`}>
           {DIFFICULTY_LABELS[difficulty]}
         </span>
         {isComplete ? (
@@ -62,14 +62,14 @@ function LevelCard({ mode, difficulty }: { mode: GameMode; difficulty: GameDiffi
           <ChevronRight className="w-4 h-4 text-gray-500" />
         )}
       </div>
-      <div className="text-xs text-gray-400 mb-3">
+      <div className="text-xs text-gray-400 mb-3 hidden sm:block">
         {mode === 'training'
           ? DIFFICULTY_DESCRIPTIONS[difficulty]
           : difficulty === 'beginner' ? 'Weight memory, KV cache, batching, and latency'
           : difficulty === 'intermediate' ? 'TP for inference, speculative decoding, FP8'
           : 'MoE serving, multi-replica, cost optimization'}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mt-2 sm:mt-0">
         <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${
@@ -182,11 +182,11 @@ export function GameMenu() {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleBackdropClick}>
       <div
-        className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+        className="bg-gray-900 border border-gray-700 rounded-xl p-4 sm:p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-white">
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-semibold text-white">
             {showTaskList ? 'Select a Level' : 'Learn Distributed Training & Inference'}
           </h2>
           <button onClick={menuOpen ? closeMenu : exit} className="text-gray-400 hover:text-gray-300 cursor-pointer">
@@ -211,7 +211,7 @@ export function GameMenu() {
                 <h3 className="text-sm font-medium text-gray-300 mb-3 uppercase tracking-wider">
                   {MODE_LABELS[mode]}
                 </h3>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {DIFFICULTIES.map(difficulty => (
                     <LevelCard key={`${mode}-${difficulty}`} mode={mode} difficulty={difficulty} />
                   ))}

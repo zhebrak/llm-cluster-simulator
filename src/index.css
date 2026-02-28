@@ -542,6 +542,10 @@ input[type="range"]::-moz-range-track {
 .bg-gray-800\/50 { background-color: rgba(240, 244, 248, 0.8) !important; }
 .bg-gray-700 { background-color: #e2e8f0 !important; }
 
+/* Modal backdrops — softer overlay for light theme */
+.bg-black\/50 { background-color: rgba(100, 116, 139, 0.25) !important; }
+.bg-black\/60 { background-color: rgba(100, 116, 139, 0.35) !important; }
+
 .border-gray-800 { border-color: var(--color-border) !important; }
 .border-gray-700 { border-color: var(--color-border-light) !important; }
 

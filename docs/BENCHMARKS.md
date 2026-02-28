@@ -47,7 +47,7 @@ match published training setups. AC type dramatically affects MFU:
 |-----------|---------|---------|-----------|
 | Nemotron-4 340B | Selective | 41.2% | 41-42% |
 | LLaMA 3.1 405B 8K | Off | 41.1% | ~40% |
-| GPT-3 175B | Full | 43.2% | 44.2% |
+| GPT-3 175B | Full | 42.0% | 44.2% |
 | IBM LLaMA 2 7B | Off | 57.0% | 57% |
 
 ### Testing Philosophy
@@ -90,27 +90,27 @@ match published training setups. AC type dramatically affects MFU:
 
 | Model | GPUs | Strategy | Config Details | AC | Sim MFU | Published | Delta | Source |
 |-------|------|----------|----------------|----|---------|-----------|-------|--------|
-| GPT-3 175B | 1024 A100 | 3D (TP=8 PP=8 DP=16) | Interleaved v=2, GBS=1536 MBS=1 seq=2048 | Full | 43.2% | 44.2% | -1.0% | [Narayanan et al. 2021](https://arxiv.org/abs/2104.04473) §5.1 |
+| GPT-3 175B | 1024 A100 | 3D (TP=8 PP=8 DP=16) | Interleaved v=2, GBS=1536 MBS=1 seq=2048 | Full | 42.0% | 44.2% | -2.2% | [Narayanan et al. 2021](https://arxiv.org/abs/2104.04473) §5.1 |
 | IBM LLaMA 2 7B | 128 A100 | FSDP (DP=128) | GBS=256 MBS=2 seq=4096 | Off | 57.0% | 57% | -0.0% | [IBM blog 2023](https://research.ibm.com/blog/pytorch-fsdp) |
-| BLOOM 176B | 384 A100 | ZeRO-1-TP-PP (TP=4 PP=12 DP=8) | GBS=2048 MBS=2 seq=2048 | Full | 46.4% | ~48% | -1.6% | [BigScience 2022](https://arxiv.org/abs/2211.05100) |
+| BLOOM 176B | 384 A100 | ZeRO-1-TP-PP (TP=4 PP=12 DP=8) | GBS=2048 MBS=2 seq=2048 | Full | 45.1% | ~48% | -2.9% | [BigScience 2022](https://arxiv.org/abs/2211.05100) |
 
-**MT-NLG 530B**: +4.1pp overshoot (8PD convention, 2022). DP scaling points validated in §4. Demoted to T2.
+**MT-NLG 530B**: +3.4pp overshoot (2022). DP scaling points validated in §4. Demoted to T2.
 
 ### 2.3 Secondary
 
 | Model | GPUs | Strategy | Config Details | AC | Sim | Published | Delta | Notes |
 |-------|------|----------|----------------|----|-----|-----------|-------|-------|
-| OLMo 2 32B | 1280 H100 | FSDP (DP=1280) | GBS=2048 MBS=4 seq=4096 | Selective | 40.4% | ~38% | +2.4pp | Same arch as OLMo 3 (shorter seq); [AI2 OLMo 2 blog](https://allenai.org/blog/olmo2-32B) |
-| MT-NLG 530B | 2240 A100 | ZeRO-1-TP-PP (TP=8 PP=35 DP=8) | GBS=1920 MBS=1 seq=2048 | Full | 44.1% | ~40% | +4.1pp | 8PD convention; largest model anchor |
+| OLMo 2 32B | 1280 H100 | FSDP (DP=1280) | GBS=2048 MBS=1 seq=4096 | Selective | 40.4% | ~38% | +2.4pp | Same arch as OLMo 3 (shorter seq); [AI2 OLMo 2 blog](https://allenai.org/blog/olmo2-32B) |
+| MT-NLG 530B | 2240 A100 | ZeRO-1-TP-PP (TP=8 PP=35 DP=8) | GBS=1920 MBS=1 seq=2048 | Full | 43.4% | ~40% | +3.4pp | Largest model anchor |
 | DBRX 132B MoE | 16 H100 | ZeRO-1-TP (TP=4) | GBS=32 MBS=1 seq=2048 | Full | 40.2% | ~37.5%‡ | +2.7pp | ‡ Derived from >50% HFU × 6/8 |
 | Mosaic LLaMA 70B | 512 H100 | FSDP-TP (TP=8 DP=64) | GBS=1024 MBS=2 seq=2048 | Full | 38.3% | 41.25% | -3.0pp | [llm-foundry](https://github.com/mosaicml/llm-foundry) |
-| NeMo 8B | 8 H100 | FSDP (DP=8) | GBS=128 MBS=2 seq=8192 | Selective | 45.6% | 45.7%§ | -0.1pp | § Implied from 725 TFLOPS |
+| NeMo 8B | 8 H100 | FSDP (DP=8) | GBS=128 MBS=1 seq=8192 | Selective | 45.6% | 45.7%§ | -0.1pp | § Implied from 725 TFLOPS |
 | NeMo 70B | 64 H100 | 3D (TP=4 PP=8 DP=2) | Interleaved v=2, GBS=128 MBS=1 seq=8192 | Selective | 45.1% | 48.3%§ | -3.2pp | § Implied from 727 TFLOPS |
 | NeMo 405B CP=2 | 1024 H100 | 3D (TP=8 PP=8 CP=2 DP=8) | Interleaved v=2, GBS=512 MBS=1 seq=8192 | Selective | 44.3% | 53.6%§ | -9.3pp | § Implied from 763 TFLOPS |
 | LLaMA 2 70B | 2048 A100 | FSDP-TP (TP=8 DP=256) | GBS=512 MBS=1 seq=4096 | Full | 44.9% | ~35-40% | -- | Estimated range |
 | Qwen2 57B-A14B MoE | 64 H100 | 3D (TP=2 PP=4 DP=8 EP=4) | GBS=256 MBS=1 seq=4096 | Full | 46.7% | 35.3% | +11.4pp | Published MFU reflects early Megatron-Core EP baseline, not optimized; [MoE Parallel Folding](https://arxiv.org/abs/2504.14960) |
-| MT-NLG 530B (350n) | 2800 A100 | ZeRO-1-TP-PP (TP=8 PP=35 DP=10) | GBS=1920 MBS=1 seq=2048 | Full | 42.7% | ~39% | +3.7pp | DP scaling point |
-| MT-NLG 530B (420n) | 3360 A100 | ZeRO-1-TP-PP (TP=8 PP=35 DP=12) | GBS=1920 MBS=1 seq=2048 | Full | 41.5% | ~36% | +5.5pp | DP scaling point |
+| MT-NLG 530B (350n) | 2800 A100 | ZeRO-1-TP-PP (TP=8 PP=35 DP=10) | GBS=1920 MBS=1 seq=2048 | Full | 42.1% | ~39% | +3.1pp | DP scaling point |
+| MT-NLG 530B (420n) | 3360 A100 | ZeRO-1-TP-PP (TP=8 PP=35 DP=12) | GBS=1920 MBS=1 seq=2048 | Full | 40.8% | ~36% | +4.8pp | DP scaling point |
 
 ‡ DBRX published ">50% MFU" is HFU. With full AC: MFU = HFU × 6/8. Lower
 bound: 50% × 0.75 = 37.5%.
@@ -191,21 +191,21 @@ per the published config, producing 41.1% MFU.
 turned off for 7B for the highest throughput." Published 57% is true MFU.
 Sim gives 57.0% (-0.0pp).
 
-#### BLOOM 176B (8PD TFLOPS convention, PP divisibility)
+#### BLOOM 176B (PP divisibility)
 
-[BigScience 2022](https://arxiv.org/abs/2211.05100) reports 150 TFLOPS using 8PD
-convention (Megatron-LM `96Bslh²`). PP=12 on 70 layers is not cleanly
+[BigScience 2022](https://arxiv.org/abs/2211.05100) reports 150 TFLOPS using
+Megatron-LM `72Bslh²` (6PD). PP=12 on 70 layers is not cleanly
 divisible (5.83 layers/stage); sim uses Math.ceil(). ALiBi positional
 encoding (no RoPE), non-gated MLP (4h intermediate). Marginally OOMs in
 sim (81.25 GB vs 80 GB limit) — uses raw sim (bypasses memory validation).
 
-#### MT-NLG 530B (+4.1pp overshoot at DP=8, T2)
+#### MT-NLG 530B (+3.4pp overshoot at DP=8, T2)
 
-[Smith et al. 2022](https://arxiv.org/abs/2201.11990) reports 126 TFLOPS (8PD convention)
-at DP=8. Sim overshoots at +4.1pp (44.1% vs ~40%). Three DP scale points
-validated: DP=8 (44.1%), DP=10 (42.7%), DP=12 (41.5%) — strictly
-decreasing, matching published trend. Demoted to T2: 8PD TFLOPS convention
-(not 6PD), 2021 paper. DP scaling points remain valuable.
+[Smith et al. 2022](https://arxiv.org/abs/2201.11990) reports 126 TFLOPS
+at DP=8. Sim overshoots at +3.4pp (43.4% vs ~40%). Three DP scale points
+validated: DP=8 (43.4%), DP=10 (42.1%), DP=12 (40.8%) — strictly
+decreasing, matching published trend. Demoted to T2: 2022 paper with
+limited config detail. DP scaling points remain valuable.
 
 #### Nemotron-4 15B DGXC (highest MFU anchor)
 
@@ -240,13 +240,13 @@ directly) matches within -0.8pp (§2.1).
 
 | Model | GPUs | Sim TFLOPS/GPU | Published | Notes |
 |-------|------|----------------|-----------|-------|
-| GPT-3 175B | 1024 A100 | 134.9 | 138 | -2%, Megatron-LM |
+| GPT-3 175B | 1024 A100 | 131.0 | 138 | -5%, Megatron-LM |
 | LLaMA 3.1 405B | 16384 H100 | ~407 | ~400 | +2%, AC off |
 | LLaMA 3 8B | 8 H100 | 421.3 | -- | Single node reference |
 | IBM LLaMA 2 7B | 128 A100 | 4398 tok/s/GPU | 3700 tok/s/GPU | +19% overshoot |
 | Nemotron-4 340B | 6144 H100 | 2569.4ms/step | 8-10.3s (pub) | Different GBS scaling |
-| BLOOM 176B | 384 A100 | 144.7 | 150 | 8PD convention (includes AC recompute) |
-| MT-NLG 530B | 2240 A100 | 137.6 | 126 | 8PD convention (includes AC recompute) |
+| BLOOM 176B | 384 A100 | 140.6 | 150 | Megatron-LM, AC recompute in published |
+| MT-NLG 530B | 2240 A100 | 135.4 | 126 | Megatron-LM, AC recompute in published |
 
 ---
 
@@ -464,23 +464,23 @@ capture CUDA graphs, fused kernels, or continuous batching.
 
 | Model | GPU | Precision | TP | Sim tok/s | Published | Notes |
 |-------|-----|-----------|----|-----------|-----------|----|
-| LLaMA 2 7B | H100 SXM | BF16 | 1 | 172 | 350-400 (vLLM) | Baseline server GPU |
-| LLaMA 3 8B | H100 SXM | BF16 | 1 | 151 | 300-350 (vLLM) | |
-| LLaMA 3 70B | H100 SXM | BF16 | 8 | 158 | 900-1200 (vLLM) | TP comm overhead modeled |
-| LLaMA 2 7B | A100 80GB | BF16 | 1 | 105 | 105-125 (vLLM) | A100 coverage |
-| LLaMA 3 8B | A100 80GB | BF16 | 1 | 92 | 90-110 (vLLM) | |
-| LLaMA 2 7B | H200 SXM | BF16 | 1 | 247 | -- | H200 coverage |
-| LLaMA 3 8B | H200 SXM | BF16 | 1 | 216 | -- | |
-| LLaMA 3 70B | H200 SXM | FP8 | 1 | 53 | -- | 70B FP8 fits 141 GB |
-| LLaMA 2 7B | B200 SXM | BF16 | 1 | 394 | -- | Fastest server GPU |
+| LLaMA 2 7B | H100 SXM | BF16 | 1 | 169 | 350-400 (vLLM) | Baseline server GPU |
+| LLaMA 3 8B | H100 SXM | BF16 | 1 | 148 | 300-350 (vLLM) | |
+| LLaMA 3 70B | H100 SXM | BF16 | 8 | 155 | 900-1200 (vLLM) | TP comm overhead modeled |
+| LLaMA 2 7B | A100 80GB | BF16 | 1 | 102 | 105-125 (vLLM) | A100 coverage |
+| LLaMA 3 8B | A100 80GB | BF16 | 1 | 89 | 90-110 (vLLM) | |
+| LLaMA 2 7B | H200 SXM | BF16 | 1 | 240 | -- | H200 coverage |
+| LLaMA 3 8B | H200 SXM | BF16 | 1 | 211 | -- | |
+| LLaMA 3 70B | H200 SXM | FP8 | 1 | 52 | -- | 70B FP8 fits 141 GB |
+| LLaMA 2 7B | B200 SXM | BF16 | 1 | 385 | -- | Fastest server GPU |
 
 **Hardware ratios** (strongest tests — bandwidth ratios are physical constants):
 
 | GPU Pair | BW Ratio (theoretical) | Sim Ratio (BF16) | Sim Ratio (INT4) | Sim Ratio (FP8) |
 |----------|------------------------|-------------------|-------------------|-----------------|
-| H200 / H100 | 1.433 (4.8/3.35) | 1.430 | 1.425 | 1.428 |
-| A100 / H100 | 0.609 (2.039/3.35) | 0.610 | 0.612 | -- |
-| B200 / H100 | 2.299 (7.7/3.35) | 2.283 | 2.262 | -- |
+| H200 / H100 | 1.433 (4.8/3.35) | 1.424 | 1.411 | 1.428 |
+| A100 / H100 | 0.609 (2.039/3.35) | 0.604 | 0.599 | -- |
+| B200 / H100 | 2.299 (7.7/3.35) | 2.283 | 2.263 | -- |
 
 Ratios are stable across precisions (BF16/INT4/FP8 within ±2%), confirming
 the simulator correctly models bandwidth-bound decode.
@@ -489,10 +489,10 @@ the simulator correctly models bandwidth-bound decode.
 
 | Precision | tok/s | Speedup vs BF16 |
 |-----------|-------|-----------------|
-| BF16 | 172 | 1.00× |
-| INT8 | 273 | 1.58× |
-| FP8 | 285 | 1.66× |
-| INT4 | 417 | 2.42× |
+| BF16 | 169 | 1.00× |
+| INT8 | 267 | 1.58× |
+| FP8 | 279 | 1.65× |
+| INT4 | 399 | 2.36× |
 
 **Roofline transition**: H200/H100 ratio decreases from 1.42 (batch=1,
 BW-bound) to 1.21 (batch=128, partially compute-bound), validating the
@@ -618,12 +618,12 @@ and [§2.3 Fine-Grained MoE](#nemo-automodel-fine-grained-moe) for details.
   validation for the grouped GEMM efficiency penalty model.
 
 - **[BigScience 2022](https://arxiv.org/abs/2211.05100)**: "BLOOM: A 176B-Parameter Open-Access Multilingual
-  Language Model" -- 384 A100s, ZeRO-1-TP-PP (TP=4 PP=12), 150 TFLOPS/GPU
-  (8PD convention), ALiBi positional encoding, non-gated MLP.
+  Language Model" -- 384 A100s, ZeRO-1-TP-PP (TP=4 PP=12), 150 TFLOPS/GPU,
+  ALiBi positional encoding, non-gated MLP.
 
 - **[Smith et al. 2022](https://arxiv.org/abs/2201.11990)**: "Using DeepSpeed and Megatron to Train Megatron-Turing
   NLG 530B" -- 2240-3360 A100s, ZeRO-1-TP-PP (TP=8 PP=35), 113-126
-  TFLOPS/GPU (8PD convention), DP scaling from DP=8 to DP=12.
+  TFLOPS/GPU, DP scaling from DP=8 to DP=12.
 
 - **[NVIDIA DGXC 2024](https://github.com/NVIDIA/dgxc-benchmarking)**: "DGXC Benchmarking" -- Nemotron-4 15B on
   64 H100s, FSDP-TP (TP=2 DP=32), 56% MFU (genuine 6PD), highest MFU anchor.

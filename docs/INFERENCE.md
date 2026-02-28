@@ -138,19 +138,39 @@ efficiency = max(0.35, min(0.85, 0.35 + 0.50 * (1 - 1 / (1 + weightGB / 5))))
 
 ### Tensor Parallelism
 
-TP AllReduce communication efficiency: **0.80** for NVLink collectives
-(`latency.ts:calculateLatencyWithTP()`).
+TP AllReduce uses a three-term model: tree-round alpha + bandwidth + layer-pipelining
+overlap (`latency.ts:calculateLatencyWithTP()`).
 
-AllReduce volume uses ring-reduce scaling: `(tp-1)/tp` of the full tensor size.
-Per-step AllReduce overhead (decode):
+**Per-collective latency** = alpha + bandwidth term:
 
 ```
-perStepAllReduce = (hiddenBytes / (commBW × 0.80)) × 2 × ((tp-1)/tp) × numLayers × 1000 ms
+numRounds = 2 × ceil(log2(tp))
+alphaPerCollective = perRoundAlpha × numRounds     // 5us NVLink, 15us PCIe per round
+bwPerCollective = (hiddenBytes / (commBW × 0.80)) × 2 × ((tp-1)/tp)
+arPerCollective = alphaPerCollective + bwPerCollective
 ```
+
+**Collective count** = `2 × numDenseLayers + arPerMoELayer × numMoELayers`, where
+`arPerMoELayer = 1` when EP > 1 (expert FFN uses EP, not TP), else 2. Dense layers
+have 2 AllReduces (attention output + MLP output).
+
+**Layer-pipelining overlap**: each AllReduce hides behind the next sub-layer's
+compute+memory work (different HW resources: NVLink/PCIe vs HBM). The last
+collective is always fully exposed:
+
+```
+sublayerTime = baseExecTime / numTPCollectives
+exposedPerCollective = max(0, arPerCollective - sublayerTime)
+perStepAllReduce = (numTPCollectives - 1) × exposedPerCollective + arPerCollective
+```
+
+For large models (70B+), sublayer weight reads (~40-56us) exceed AllReduce time
+(~30us at TP=8 NVLink), so AllReduce is fully hidden and TP scaling is near-perfect.
+For small models (8-14B), AllReduce dominates the tiny per-sublayer reads, exposing
+significant overhead — making TP=1 replicas more efficient for throughput.
 
 For MoE models with EP, the expert FLOPs fraction is capped at **0.95** to
-account for shared-layer compute that is not parallelized by EP
-(`latency.ts:calculateLatencyWithTP()`).
+account for shared-layer compute that is not parallelized by EP.
 
 Without MLA: `tpot = baseTpot / tp + perStepAllReduce + epAllToAll`.
 

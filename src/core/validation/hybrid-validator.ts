@@ -152,7 +152,7 @@ export function validateHybridCombination(config: {
 
 /**
  * Validates that TP degree doesn't exceed GPUs per node (cross-node TP).
- * Cross-node TP requires NVLink bandwidth which is 5-10x faster than InfiniBand.
+ * Cross-node TP requires fast intra-node bandwidth (NVLink, etc.) which is much faster than inter-node fabrics.
  *
  * @param tp - Tensor parallelism degree
  * @param gpusPerNode - Number of GPUs per node
@@ -166,7 +166,7 @@ export function validateTPTopology(
     return {
       severity: 'warning',
       message: `TP=${tp} exceeds GPUs per node (${gpusPerNode}). ` +
-        'Cross-node TP requires NVLink-level bandwidth; InfiniBand is 5-10x slower. ' +
+        'Cross-node TP requires fast intra-node bandwidth (NVLink); inter-node fabrics are much slower. ' +
         'Consider reducing TP to fit within a node.',
       reference: 'Megatron-LM best practices',
     };

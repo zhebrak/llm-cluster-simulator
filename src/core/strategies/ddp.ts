@@ -206,7 +206,8 @@ export class DDPStrategy extends ParallelismStrategy {
     const { effectiveTFLOPS } = computeComputeEfficiency(model, tokensPerMicroBatch, gpu, computeDtype);
 
     // Non-matmul overhead (memory-bandwidth-bound ops: norms, activations, residual adds)
-    const nonMatmulPerMB = computeNonMatmulTimeMs(model, tokensPerMicroBatch, gpu);
+    const nonMatmulPerMB = computeNonMatmulTimeMs(model, tokensPerMicroBatch, gpu,
+      { flashAttention: ctx.flashAttention, seqLength, microBatchSize });
 
     // QLoRA dequantization time (bandwidth-bound, added to forward)
     const dequantTime = ctx.lora?.method === 'qlora'

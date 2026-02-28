@@ -9,18 +9,18 @@ import { describe, it, expect } from 'vitest';
 import { PARAMETER_REGISTRY } from '../../src/core/parameter-registry.ts';
 
 describe('Parameter Census', () => {
-  it('registry has exactly 52 entries', () => {
-    expect(PARAMETER_REGISTRY.length).toBe(52);
+  it('registry has exactly 61 entries', () => {
+    expect(PARAMETER_REGISTRY.length).toBe(61);
   });
 
-  it('tier distribution: 11 physics, 28 grounded-empirical, 13 fitted', () => {
+  it('tier distribution: 11 physics, 33 grounded-empirical, 17 fitted', () => {
     const physics = PARAMETER_REGISTRY.filter(p => p.tier === 'physics').length;
     const grounded = PARAMETER_REGISTRY.filter(p => p.tier === 'grounded-empirical').length;
     const fitted = PARAMETER_REGISTRY.filter(p => p.tier === 'fitted').length;
 
     expect(physics).toBe(11);
-    expect(grounded).toBe(28);
-    expect(fitted).toBe(13);
+    expect(grounded).toBe(33);
+    expect(fitted).toBe(17);
   });
 
   it('every entry has non-empty mechanism and evidence', () => {

@@ -440,7 +440,8 @@ export function computeInferenceRoofline(
   // Compute FLOPs share: total prefill vs total decode FLOPs across full request batch
   const prefillBatch = config.continuousBatching ? 1 : batchSize;
   const totalPrefillFlops = prefillFLOPs(model, inputSeqLen) * batchSize; // all requests
-  const totalDecodeFlops = decodeFLOPs(model) * batchSize * outputSeqLen; // all tokens
+  const avgDecodeSeqLen = inputSeqLen + outputSeqLen / 2;
+  const totalDecodeFlops = decodeFLOPs(model, avgDecodeSeqLen) * batchSize * outputSeqLen; // all tokens
   const totalFlops = totalPrefillFlops + totalDecodeFlops;
   const prefillFrac = totalFlops > 0 ? totalPrefillFlops / totalFlops : 0.5;
   const decodeFrac = totalFlops > 0 ? totalDecodeFlops / totalFlops : 0.5;
@@ -466,9 +467,9 @@ export function computeInferenceRoofline(
 
   // --- b) Decode point (actual measured) ---
   {
-    const flops = decodeFLOPs(model) * batchSize;
-    const weightsBytes = moeWeightBytesPerStep(model, batchSize, precision);
     const avgSeqLen = inputSeqLen + outputSeqLen / 2;
+    const flops = decodeFLOPs(model, avgSeqLen) * batchSize;
+    const weightsBytes = moeWeightBytesPerStep(model, batchSize, precision);
     const kvCacheBytes = totalKVCacheMemory(model, avgSeqLen, batchSize, precision);
     const totalBytes = weightsBytes + kvCacheBytes;
     const intensity = totalBytes > 0 ? flops / totalBytes : 0;

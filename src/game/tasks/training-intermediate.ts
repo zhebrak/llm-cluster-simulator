@@ -11,7 +11,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 0,
     title: 'Why Tensor Parallelism?',
-    concept: 'Tensor Parallelism for large model memory',
+    concept: 'When one GPU isn\'t enough memory',
     learningObjectives: [
       'Recognize when FSDP alone is insufficient: activation memory too large for single-GPU compute',
       'Understand TP partitions weight matrices so each GPU computes a slice of each layer',
@@ -24,8 +24,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'out of memory, you need to split the model weights themselves across GPUs ' +
       'within a node. That is what Tensor Parallelism (TP) does: it partitions ' +
       'each layer\'s weight matrices so that every GPU computes only a slice of ' +
-      'each matrix multiply. Your mission: switch from pure FSDP to FSDP+TP and ' +
-      'get the model to fit in memory.',
+      'each matrix multiply. Your mission: get the model running efficiently and achieve MFU above 40%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -49,12 +48,17 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'MFU > 40%',
       },
     ],
+    expectedChanges: [
+      { field: 'strategyType', check: 'changed', label: 'Changed strategy to include TP' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'FSDP across 16 GPUs works, but MFU is limited by inter-node FSDP ' +
         'communication. With 16 GPUs across 2 nodes, the AllGather and ' +
         'ReduceScatter cross InfiniBand for every layer.',
       'Switch the strategy from "FSDP" to "FSDP + TP" in the sidebar. TP ' +
-        'handles intra-node communication over {{nvlink|NVLink}} (900 GB/s) while FSDP ' +
+        'handles intra-node communication over {{nvlink|NVLink}} (900 GB/s on H100) while FSDP ' +
         'handles inter-node communication. This reduces the volume of slow ' +
         'inter-node traffic.',
       'Try different TP degrees with FSDP+TP. TP AllReduces stay on NVLink, ' +
@@ -114,6 +118,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'Simulation succeeds',
       },
     ],
+    expectedChanges: [
+      { field: 'tpDegree', check: 'changed', label: 'Changed TP degree' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'Higher TP means each GPU computes less per layer but communicates more (AllReduce every layer). Lower TP means larger matrix multiplies (better GPU utilization) but more per-GPU memory. Remember: `DP = totalGPUs / TP`.',
       'Experiment with different TP degrees. Lower TP gives more DP for throughput scaling, higher TP reduces memory. Also make sure your batch size is large enough to keep GPUs fed.',
@@ -121,10 +130,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     successExplanation:
       'The optimal TP degree balances two forces: (1) each GPU needs enough work ' +
       'per layer to saturate its compute units (favors lower TP), and (2) each GPU ' +
-      'must have enough memory to hold activations (favors higher TP).\n\nFor 70B on ' +
-      '8 H100s, `TP=4` with `DP=2` is often the sweet spot -- each GPU runs `70B/4` worth ' +
-      'of parameters per layer while still getting data-parallel throughput scaling. ' +
-      'TP should always be a power of 2 and stay within a single NVLink-connected node.',
+      'must have enough memory to hold activations (favors higher TP).\n\n' +
+      'Lower TP gives more data parallelism for throughput scaling, while higher TP reduces ' +
+      'per-GPU memory pressure. The optimal choice depends on model size, GPU memory, and ' +
+      'interconnect bandwidth. TP should always be a power of 2 and stay within a single ' +
+      'high-bandwidth-interconnect-connected node.',
   },
 
   // ── 3. The NVLink Boundary ─────────────────────────────────────────
@@ -134,11 +144,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 2,
     title: 'The NVLink Boundary',
-    concept: 'Why TP must stay within a node',
+    concept: 'Interconnect bandwidth constraints',
     learningObjectives: [
-      'Discover that cross-node TP over InfiniBand is catastrophically slow vs intra-node NVLink',
-      'Understand 2D parallelism: TP for intra-node (NVLink), FSDP for inter-node (InfiniBand)',
-      'Know why frequent TP AllReduces need fast NVLink while FSDP tolerates slower IB',
+      'Discover that cross-node TP over the inter-node network is catastrophically slow vs intra-node NVLink',
+      'Understand 2D parallelism: TP for intra-node (NVLink), FSDP for inter-node (network fabric)',
+      'Know why frequent TP AllReduces need fast NVLink while FSDP tolerates the slower inter-node network',
     ],
     briefing:
       'You have LLaMA 3.3 70B on 32 H100 GPUs across 4 nodes. The current configuration uses ' +
@@ -175,19 +185,24 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'Simulation succeeds',
       },
     ],
+    expectedChanges: [
+      { field: 'tpDegree', check: 'decreased', label: 'Decreased TP degree' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'Look at the TP degree relative to GPUs per node. TP AllReduce happens at every transformer layer — what interconnect is it using?',
       'Reduce TP so it fits within a single node. Let FSDP handle the inter-node communication instead.',
     ],
     successExplanation:
-      '2D parallelism (FSDP+TP) is the workhorse of modern LLM training. The ' +
+      '2D parallelism (FSDP+TP) is the standard approach for modern LLM training. The ' +
       'principle is simple: use the fastest interconnect for the most frequent ' +
       'communication. TP AllReduces happen every layer (high frequency), so they ' +
       'must go over NVLink (~900 GB/s). When TP=16 spans two nodes, those AllReduces ' +
-      'cross InfiniBand (~400 GB/s) — a massive bandwidth drop that destroys MFU.\n\n' +
+      'cross the inter-node network (~400 GB/s for InfiniBand NDR on H100 clusters) — a massive bandwidth drop that tanks MFU.\n\n' +
       'FSDP AllGathers happen once per layer but can ' +
       'be pipelined and overlapped with compute, so they tolerate the slower ' +
-      'InfiniBand. Keeping TP within a node and FSDP across nodes ' +
+      'the inter-node network. Keeping TP within a node and FSDP across nodes ' +
       'is the standard recipe for clusters up to a few hundred GPUs.',
   },
 
@@ -198,7 +213,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 3,
     title: 'Pipeline Parallelism Intro',
-    concept: 'Splitting models across pipeline stages',
+    concept: 'Vertical model partitioning',
     learningObjectives: [
       'Understand PP assigns contiguous blocks of layers to different pipeline stages',
       'Know 3D parallelism: TP (intra-layer) + PP (inter-layer) + DP (data); TP x PP x DP = totalGPUs',
@@ -237,6 +252,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'MFU > 35%',
       },
     ],
+    expectedChanges: [
+      { field: 'ppDegree', check: 'increased', label: 'Increased PP degree' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'GPT-3 175B has 96 layers. PP divides these across pipeline stages, ' +
         'reducing the replicated weights and gradients per GPU. The number of ' +
@@ -244,7 +264,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'The constraint is `TP × PP × DP = totalGPUs`. Keep TP within a node. ' +
         'Then try different PP values — more PP reduces memory per GPU but also ' +
         'reduces DP (which limits throughput). Check the pipeline timeline to ' +
-        'see how microbatches flow through stages.',
+        'see how microbatches flow through stages. Hover over the GPU grid to see how GPUs are assigned to TP ranks, PP stages, and DP groups.',
     ],
     successExplanation:
       'Pipeline Parallelism is the third dimension of 3D parallelism. While TP ' +
@@ -282,8 +302,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'from the previous stage or gradients from the next. The formula is ' +
       '`(pp-1)/(pp-1+m)` where `m` is the number of {{microbatches}}. More microbatches ' +
       'mean more work to fill the pipeline and less idle time. With `PP=4`, `TP=8`, ' +
-      'and a small global batch size, the bubble is over 20%. Reduce it below 20% ' +
-      'by increasing the global batch size (which increases the number of microbatches).',
+      'and a small global batch size, the bubble is over 20%. Your goal: reduce it below 20%.',
     setup: {
       modelId: 'gpt3-175b',
       gpuId: 'a100-80gb',
@@ -304,6 +323,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         value: 0.20,
         label: 'Pipeline bubble < 20%',
       },
+    ],
+    expectedChanges: [
+      { field: 'globalBatchSize', check: 'increased', label: 'Increased global batch size' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'The number of microbatches (`m`) equals the {{gradient-accumulation|gradient accumulation}} steps: ' +
@@ -332,23 +356,23 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 5,
     title: 'Interleaved Scheduling',
-    concept: 'Virtual pipeline stages to cut the bubble further',
+    concept: 'Fine-grained pipeline scheduling',
     learningObjectives: [
       'Understand virtual pipeline stages: each rank gets v non-contiguous chunks of layers',
-      'Know interleaved bubble = (pp-1)/((pp-1+m) x v) — v divides the bubble',
+      'Know interleaved bubble = (pp-1)/(pp-1 + m×v) — v multiplies microbatches in denominator',
       'Understand the tradeoff: more VP = less bubble but more P2P communication and memory',
       'Know layers per physical stage must be divisible by v',
     ],
     briefing:
       'You reduced the pipeline bubble with more microbatches. But there is ' +
-      'another powerful trick: interleaved {{1f1b|1F1B}} scheduling. Instead of assigning ' +
+      'another technique: interleaved {{1f1b|1F1B}} scheduling. Instead of assigning ' +
       'each pipeline stage one contiguous block of layers, you assign it multiple ' +
       'smaller "virtual stages." With `v` virtual stages per rank, the effective ' +
       'bubble shrinks by a factor of `v` because each stage\'s chunk of work is ' +
       'smaller and the pipeline fills faster. For GPT-3 175B with 96 layers and ' +
       '`PP=8`, setting `v=4` gives each stage 3 layers per virtual stage (`96/8/4=3`). ' +
       'The current config uses `PP=8` with 1F1B and the bubble is above 12%. ' +
-      'Switch to interleaved scheduling to get it below 12%.',
+      'Your goal: get it below 12%.',
     setup: {
       modelId: 'gpt3-175b',
       gpuId: 'a100-80gb',
@@ -370,12 +394,17 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'Pipeline bubble < 12%',
       },
     ],
+    expectedChanges: [
+      { field: 'pipelineSchedule', check: 'changed', label: 'Changed pipeline schedule' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'Look for the pipeline schedule selector in the sidebar. Switch from ' +
         '"1F1B" to "Interleaved 1F1B." You will also need to set the number ' +
         'of virtual pipeline stages (v).',
       'With interleaved scheduling, the effective bubble becomes ' +
-        '`(pp-1)/((pp-1+m)×v)`. The number of layers per physical stage must be ' +
+        '`(pp-1)/(pp-1 + m×v)`. The number of layers per physical stage must be ' +
         'divisible by `v`. GPT-3 has 96 layers; with `PP=8` that is 12 layers per ' +
         'stage. Check which values of `v` evenly divide the layers per stage. ' +
         'The pipeline timeline shows the interleaved schedule — compare it to ' +
@@ -402,7 +431,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 6,
     title: 'Sequence Parallelism',
-    concept: 'Splitting activations along the sequence dimension',
+    concept: 'Redundant activation memory across ranks',
     learningObjectives: [
       'Understand SP partitions activations along sequence dimension for non-TP ops (LayerNorm, dropout)',
       'Know SP converts AllReduce into ReduceScatter + AllGather with identical total volume',
@@ -416,9 +445,8 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'this by partitioning activations along the sequence dimension for these ' +
       'replicated regions. The AllReduce in TP becomes a {{reducescatter|ReduceScatter}} + ' +
       '{{allgather|AllGather}} pair, but the activation memory per GPU drops to 1/TP even for ' +
-      'non-matmul ops. You have 70B on 16 H100s with TP=4. Enable SP and push ' +
-      'MFU above 41%. Without SP, replicated activations waste memory and the ' +
-      'TP AllReduce pattern is less overlap-friendly.',
+      'non-matmul ops. You have 70B on 16 H100s with TP=4. Your goal: push ' +
+      'MFU above 41%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -444,6 +472,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         value: 0.41,
         label: 'MFU > 41%',
       },
+    ],
+    expectedChanges: [
+      { field: 'sequenceParallel', check: 'enabled', label: 'Enabled sequence parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'Without SP, TP splits weight-related activations (Q, K, V projections) ' +
@@ -477,13 +510,13 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     title: 'Scaling to a Cluster',
     concept: 'Multi-node training with inter-node communication',
     learningObjectives: [
-      'Understand inter-node InfiniBand (~400 GB/s) as a bottleneck at 4+ nodes vs intra-node NVLink (~900 GB/s)',
+      'Understand the inter-node network as a bottleneck at 4+ nodes vs intra-node interconnect (e.g., ~400 vs ~900 GB/s on H100)',
       'Know the standard pattern: TP intra-node, FSDP/DP inter-node',
       'Understand FSDP backward prefetch overlaps AllGather with compute, hiding inter-node cost',
       'Know larger batch sizes improve compute-to-communication ratio at multi-node scale',
     ],
     briefing:
-      'Training at scale means running across many nodes connected by InfiniBand ' +
+      'Training at scale means running across many nodes connected by the inter-node network ' +
       'rather than NVLink. With 64 H100s (8 nodes of 8 GPUs), inter-node FSDP ' +
       'communication becomes a real bottleneck. The AllGather to reconstruct ' +
       'weights and the ReduceScatter for gradients now traverse the network ' +
@@ -520,10 +553,14 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'Simulation succeeds',
       },
     ],
+    expectedChanges: [
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'TP should stay within a node (TP <= 8) so its frequent AllReduces use ' +
         'fast NVLink. FSDP spans all GPUs across nodes, communicating over ' +
-        'InfiniBand. The DP degree is determined by totalGPUs / TP.',
+        'the inter-node fabric. The DP degree is determined by totalGPUs / TP.',
       'Larger batch sizes help: more gradient accumulation steps mean more ' +
         'compute per communication round. FSDP can overlap its AllGather with ' +
         'the forward pass ({{backward-prefetch|backward prefetch}}), hiding much of the cost.',
@@ -588,6 +625,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'MFU > 35%',
       },
     ],
+    expectedChanges: [
+      { field: 'strategyType', check: 'changed', label: 'Changed strategy from DDP' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'DDP replicates all parameters on every GPU. With 47B total params, the model state per GPU is enormous. Switch to a strategy that shards model state across GPUs.',
       'FSDP shards parameters, gradients, and optimizer states — reducing per-GPU memory by the number of GPUs. MoE models benefit hugely because all expert weights are sharded.',
@@ -612,7 +654,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     difficulty: 'intermediate',
     order: 9,
     title: 'Precision Frontier: FP8',
-    concept: 'FP8 mixed precision for higher throughput',
+    concept: 'Next-generation Tensor Core throughput',
     learningObjectives: [
       'Know H100 FP8 Tensor Cores deliver ~2x BF16 TFLOPS (1978 vs 989)',
       'Understand Transformer Engine handles per-tensor dynamic scaling for FP8 stability',
@@ -625,8 +667,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'while keeping master weights and critical accumulations in higher ' +
       'precision. With {{transformer-engine|Transformer Engine}} handling the dynamic scaling, FP8 can ' +
       'nearly double throughput with minimal accuracy impact for large models. ' +
-      'You have LLaMA 3.3 70B on 16 H100s (2 nodes) in BF16. Switch to FP8 ' +
-      'precision and push MFU above 40%.',
+      'You have LLaMA 3.3 70B on 16 H100s (2 nodes) in BF16. Your goal: push MFU above 40%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -651,6 +692,11 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         label: 'MFU > 40%',
       },
     ],
+    expectedChanges: [
+      { field: 'precision', check: 'changed', label: 'Changed precision to FP8' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'FP8 is available on Hopper (H100) and newer GPUs. Look for the ' +
         'precision selector in the sidebar and switch from BF16 to FP8. The ' +
@@ -664,7 +710,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
         'memory savings.',
     ],
     successExplanation:
-      'FP8 training is a game-changer for Hopper and newer GPUs. The H100\'s ' +
+      'FP8 training is a major advance for Hopper and newer GPUs. The H100\'s ' +
       'FP8 Tensor Cores deliver ~2000 TFLOPS vs ~990 TFLOPS for BF16. ' +
       'NVIDIA\'s Transformer Engine handles per-tensor dynamic scaling to ' +
       'maintain training stability: it tracks the range of activations and ' +

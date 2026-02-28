@@ -110,7 +110,7 @@ const MAX_RELATIVE_IMPROVEMENT = 1.35;
 const EXPECTATIONS: PresetExpectation[] = [
   { slug: 'llama3-405b',     mfuMin: 0.38, mfuMax: 0.44 },  // 41.1% — DP capped at 512, optimizer retains PP=16
   { slug: 'nemotron-4-340b', mfuMin: 0.49, mfuMax: 0.55 },  // 52.0%
-  { slug: 'gpt3-175b',       mfuMin: 0.54, mfuMax: 0.60 },  // 57.0%
+  { slug: 'gpt3-175b',       mfuMin: 0.54, mfuMax: 0.60, maxRelativeImprovement: 1.40 },  // 57.0% — FA=false baseline has attention HBM penalty; optimizer enables FA, widening gain
   { slug: 'deepseek-v3-r1',  mfuMin: 0.60, mfuMax: 0.66, maxRelativeImprovement: 1.45 },  // 63.2% — drops PP=8→1, MoE baseline MFU is low; 1.41x is pre-existing (compute gains from dropping PP dwarf DP penalty)
   { slug: 'llama4-maverick', mfuMin: 0.79, mfuMax: 0.85 },  // 82.3%
   { slug: 'grok-2.5',        mfuMin: 0.96, mfuMax: 1.02 },  // 99.2%

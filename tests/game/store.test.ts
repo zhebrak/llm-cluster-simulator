@@ -35,8 +35,10 @@ function resetStore() {
     attempts: 0,
     lastValidation: null,
     progress: {},
+    taskStates: {},
     savedConfigSnapshot: null,
     lastValidatedRunCounter: 0,
+    successDismissed: false,
   });
   // Clear storage
   for (const key of Object.keys(storage)) {
@@ -193,5 +195,201 @@ describe('Game store — crash recovery', () => {
     useGameStore.getState().exit();
 
     expect(storage[PRE_GAME_CONFIG_KEY]).toBeUndefined();
+  });
+});
+
+describe('Game store — successDismissed', () => {
+  beforeEach(resetStore);
+
+  it('dismissSuccess() sets successDismissed to true', () => {
+    useGameStore.getState().dismissSuccess();
+    expect(useGameStore.getState().successDismissed).toBe(true);
+  });
+
+  it('reviewSuccess() sets successDismissed to false', () => {
+    useGameStore.setState({ successDismissed: true });
+    useGameStore.getState().reviewSuccess();
+    expect(useGameStore.getState().successDismissed).toBe(false);
+  });
+
+  it('startTask() resets successDismissed', () => {
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      successDismissed: true,
+    });
+
+    useGameStore.getState().startTask('training-beginner-01');
+    expect(useGameStore.getState().successDismissed).toBe(false);
+  });
+
+  it('acknowledgeSuccess() resets successDismissed', () => {
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      activeTaskId: 'training-beginner-01',
+      lastValidation: { passed: true, results: [] },
+      successDismissed: true,
+    });
+
+    useGameStore.getState().acknowledgeSuccess();
+    expect(useGameStore.getState().successDismissed).toBe(false);
+  });
+});
+
+describe('Game store — per-task state preservation', () => {
+  beforeEach(resetStore);
+
+  it('startTask() restores saved state for completed tasks', () => {
+    const savedValidation = { passed: true, results: [{ criterion: 'test', passed: true, message: 'ok' }] };
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      progress: { 'training-beginner': ['training-beginner-01'] },
+      taskStates: {
+        'training-beginner-01': {
+          hintsRevealed: 2,
+          attempts: 3,
+          lastValidation: savedValidation,
+        },
+      },
+    });
+
+    useGameStore.getState().startTask('training-beginner-01');
+
+    const state = useGameStore.getState();
+    expect(state.activeTaskId).toBe('training-beginner-01');
+    expect(state.hintsRevealed).toBe(2);
+    expect(state.attempts).toBe(3);
+    expect(state.lastValidation).toEqual(savedValidation);
+    expect(state.successDismissed).toBe(true);  // suppress auto-modal
+  });
+
+  it('startTask() resets state for non-completed tasks', () => {
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      progress: {},
+    });
+
+    useGameStore.getState().startTask('training-beginner-01');
+
+    const state = useGameStore.getState();
+    expect(state.activeTaskId).toBe('training-beginner-01');
+    expect(state.hintsRevealed).toBe(0);
+    expect(state.attempts).toBe(0);
+    expect(state.lastValidation).toBeNull();
+    expect(state.successDismissed).toBe(false);
+  });
+
+  it('resetTask() clears taskStates entry', () => {
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      activeTaskId: 'training-beginner-01',
+      taskStates: {
+        'training-beginner-01': {
+          hintsRevealed: 2,
+          attempts: 3,
+          lastValidation: { passed: true, results: [] },
+        },
+      },
+    });
+
+    useGameStore.getState().resetTask();
+
+    const state = useGameStore.getState();
+    expect(state.taskStates['training-beginner-01']).toBeUndefined();
+  });
+
+  it('resetLevel() clears taskStates for that level', () => {
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      progress: { 'training-beginner': ['training-beginner-01', 'training-beginner-02'] },
+      taskStates: {
+        'training-beginner-01': {
+          hintsRevealed: 2,
+          attempts: 3,
+          lastValidation: { passed: true, results: [] },
+        },
+        'training-beginner-02': {
+          hintsRevealed: 1,
+          attempts: 1,
+          lastValidation: { passed: true, results: [] },
+        },
+        'training-intermediate-01': {
+          hintsRevealed: 1,
+          attempts: 2,
+          lastValidation: { passed: true, results: [] },
+        },
+      },
+    });
+
+    useGameStore.getState().resetLevel('training', 'beginner');
+
+    const state = useGameStore.getState();
+    // Beginner task states should be cleared
+    expect(state.taskStates['training-beginner-01']).toBeUndefined();
+    expect(state.taskStates['training-beginner-02']).toBeUndefined();
+    // Other level's task states should be preserved
+    expect(state.taskStates['training-intermediate-01']).toBeDefined();
+  });
+
+  it('acknowledgeSuccess() saves completed task state before advancing', () => {
+    const winValidation = { passed: true, results: [] };
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      activeTaskId: 'training-beginner-01',
+      hintsRevealed: 2,
+      attempts: 5,
+      lastValidation: winValidation,
+      taskStates: {},
+    });
+
+    useGameStore.getState().acknowledgeSuccess();
+
+    const state = useGameStore.getState();
+    // Should have saved the completed task's state
+    expect(state.taskStates['training-beginner-01']).toEqual({
+      hintsRevealed: 2,
+      attempts: 5,
+      lastValidation: winValidation,
+    });
+    // Should have advanced to next task
+    expect(state.activeTaskId).toBe('training-beginner-02');
+  });
+
+  it('taskStates is persisted to localStorage', () => {
+    const savedValidation = { passed: true, results: [] };
+    useGameStore.setState({
+      active: true,
+      activeMode: 'training',
+      activeDifficulty: 'beginner',
+      activeTaskId: 'training-beginner-01',
+      hintsRevealed: 1,
+      attempts: 2,
+      lastValidation: savedValidation,
+      taskStates: {},
+    });
+
+    // acknowledgeSuccess triggers persist
+    useGameStore.getState().acknowledgeSuccess();
+
+    const saved = JSON.parse(storage[GAME_STORAGE_KEY]);
+    expect(saved.taskStates).toBeDefined();
+    expect(saved.taskStates['training-beginner-01']).toEqual({
+      hintsRevealed: 1,
+      attempts: 2,
+      lastValidation: savedValidation,
+    });
   });
 });

@@ -514,7 +514,8 @@ export class InferenceSimulationEngine {
 
     // Prefill phase
     const ttft = calculateLatencyMetrics(
-      modelSpec, inputSeqLen, outputSeqLen, batchSize, gpu, weightPrecision, kvCachePrecision
+      modelSpec, inputSeqLen, outputSeqLen, batchSize, gpu, weightPrecision, kvCachePrecision,
+      this.config!.flashAttention,
     ).ttft;
 
     events.push({

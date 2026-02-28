@@ -21,7 +21,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       'Recognize interleaved scheduling as critical for reducing pipeline bubbles at large PP',
     ],
     briefing:
-      'You have been handed the keys to a 128-GPU H100 cluster and a mission: ' +
+      'You have a 128-GPU H100 cluster and a mission: ' +
       'train GPT-3 175B. With {{zero1|ZeRO-1}}, optimizer state is sharded but parameters ' +
       'and gradients are replicated per {{dp|DP}} rank. At `TP=8` and `PP=1`, each GPU holds ' +
       '`175B/8 ≈ 22B` params — 44 GB of weights plus 88 GB of FP32 gradients, far ' +
@@ -41,6 +41,10 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'mfu', operator: '>', value: 0.40, label: 'MFU > 40%' },
+    ],
+    expectedChanges: [
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'TP should stay within a node to use fast {{nvlink|NVLink}}. Without PP, replicated weights and gradients exceed per-GPU memory — you need all three dimensions.',
@@ -66,7 +70,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     difficulty: 'advanced',
     order: 1,
     title: 'Expert Parallelism',
-    concept: 'Distributing MoE Experts Across GPUs',
+    concept: 'Sparse model sharding and token routing',
     learningObjectives: [
       'Understand EP subdivides the DP dimension: each GPU holds a fraction of experts',
       'Know EP uses all-to-all communication to route tokens to the correct GPU',
@@ -96,6 +100,11 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'mfu', operator: '>', value: 0.20, label: 'MFU > 20%' },
     ],
+    expectedChanges: [
+      { field: 'epDegree', check: 'increased', label: 'Increased EP degree' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'Set EP in the strategy configuration. EP must divide the DP degree. Higher EP means each GPU holds fewer experts, reducing memory and per-GPU compute.',
       'DeepSeek V3 has 61 layers (a prime number), which makes PP difficult. Focus on TP + EP within FSDP-TP.',
@@ -119,7 +128,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     difficulty: 'advanced',
     order: 2,
     title: 'Context Parallelism',
-    concept: 'Splitting Long Sequences Across GPUs',
+    concept: 'Long-sequence memory bottlenecks',
     learningObjectives: [
       'Understand CP splits the sequence dimension across GPUs for long-context training',
       'Know ring attention pipelines KV block transfers with attention computation',
@@ -150,6 +159,11 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
+    ],
+    expectedChanges: [
+      { field: 'cpDegree', check: 'increased', label: 'Increased CP degree' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'The default config OOMs because activation memory at 32K tokens is enormous even with full activation checkpointing. Look for a parallelism dimension that splits the sequence across GPUs to reduce per-GPU activation memory.',
@@ -183,7 +197,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       'Know overlap engineering: when compute >> communication, transfers hide behind matmuls',
     ],
     briefing:
-      'Every distributed training job burns time on communication — {{allreduce|AllReduce}} for TP, ' +
+      'Every distributed training job spends time on communication — {{allreduce|AllReduce}} for TP, ' +
       '{{allgather|AllGather}} for {{fsdp|FSDP}}, point-to-point for PP. The goal is to hide as much ' +
       'communication as possible behind computation. The compute-to-communication ratio (C/T) ' +
       'determines how well this works.\n\n' +
@@ -207,6 +221,11 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'mfu', operator: '>', value: 0.40, label: 'MFU > 40%' },
+    ],
+    expectedChanges: [
+      { field: 'tpDegree', check: 'decreased', label: 'Decreased TP degree' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'TP=8 splits each layer into tiny per-GPU matmuls. Reducing TP gives each GPU more compute per layer, improving the compute-to-communication ratio.',
@@ -232,7 +251,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     difficulty: 'advanced',
     order: 4,
     title: 'LoRA at Scale',
-    concept: 'Parameter-Efficient Fine-Tuning',
+    concept: 'Frozen weights and trainable adapters',
     learningObjectives: [
       'Understand LoRA: frozen base model + small trainable adapter matrices (A, B)',
       'Know LoRA uses 4PD FLOPs (no backward through frozen weights) vs 6PD for full fine-tuning',
@@ -263,8 +282,13 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'memoryUtilization', operator: '<', value: 0.90, label: 'Memory < 90%' },
     ],
+    expectedChanges: [
+      { field: 'finetuningMethod', check: 'changed', label: 'Changed fine-tuning method' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
-      'In the sidebar, find the Fine-tuning section (between Activation Checkpointing and Training Scale). Change the method from "Full" to "LoRA."',
+      'In the sidebar, find the Fine-tuning section (between Activation Checkpointing and Training Scale). Change the method from "Full" to "LoRA." Watch the memory breakdown update — optimizer state memory drops dramatically when only adapter params need Adam states.',
       'LoRA target modules control how many adapter pairs are added. "q_v" is minimal, "all_linear" adds adapters to every linear layer. Start with "q_k_v_o" for a good balance.',
       'FSDP shards the base weights across GPUs but the frozen weights still consume memory. LoRA savings are largest on DDP (single-node) because FSDP already shards base weights.',
     ],
@@ -287,7 +311,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     difficulty: 'advanced',
     order: 5,
     title: 'QLoRA on Budget GPUs',
-    concept: 'Quantized Fine-Tuning on Consumer Hardware',
+    concept: '4-bit base weights with full-precision adapters',
     learningObjectives: [
       'Understand NF4 quantization: ~0.5 bytes/param for frozen base model (4x reduction from BF16)',
       'Know adapters stay in BF16 for training stability',
@@ -297,11 +321,11 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     briefing:
       'Not everyone has H100s. The {{l40s|L40S}} is a 48 GB Ada Lovelace GPU — powerful for ' +
       'inference but tight for training large models. LLaMA 3.3 70B in BF16 needs ~140 GB ' +
-      'just for weights, far beyond 4 GPUs with 192 GB total memory. QLoRA to the ' +
-      'rescue: it stores the frozen base model in 4-bit {{nf4|NormalFloat (NF4)}} format — ' +
+      'just for weights, far beyond 4 GPUs with 192 GB total memory. QLoRA solves ' +
+      'this: it stores the frozen base model in 4-bit {{nf4|NormalFloat (NF4)}} format — ' +
       'roughly 0.5 bytes per parameter instead of 2 — while training LoRA adapters ' +
       'in BF16. This cuts weight memory by ~4x. Your mission: fit LLaMA 3.3 70B on ' +
-      '4 L40S GPUs using QLoRA and FSDP. If it fits in memory, you win.',
+      '4 L40S GPUs using QLoRA and FSDP.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'l40s',
@@ -315,6 +339,11 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'memoryUtilization', operator: '<', value: 1.0, label: 'Fits in memory' },
+    ],
+    expectedChanges: [
+      { field: 'finetuningMethod', check: 'changed', label: 'Changed fine-tuning method' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'In the Fine-tuning section, select "QLoRA" — this quantizes the base model to NF4 (4-bit). The adapter weights stay in BF16.',
@@ -370,6 +399,11 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'mfu', operator: '>', value: 0.35, label: 'MFU > 35%' },
     ],
+    expectedChanges: [
+      { field: 'precision', check: 'changed', label: 'Changed precision' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'The published config: TP=4, PP=8, EP=32, sequence parallelism ON, FP8 mixed precision. Set these in strategy config.',
       'Use `GBS=8192, MBS=2` (from the paper). The DualPipe-V schedule is available in the pipeline schedule selector.',
@@ -403,7 +437,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     difficulty: 'advanced',
     order: 7,
     title: 'Nemotron 340B',
-    concept: 'Pipeline Interleaving and Virtual Stages',
+    concept: 'Large-scale pipeline efficiency',
     learningObjectives: [
       'Understand VP=8 with PP=12 achieves finest granularity (1 layer per virtual stage)',
       'Know bubble drops from ~58% (no interleaving) to ~10% with VP=8',
@@ -435,8 +469,13 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'mfu', operator: '>', value: 0.40, label: 'MFU > 40%' },
     ],
+    expectedChanges: [
+      { field: 'pipelineSchedule', check: 'changed', label: 'Changed pipeline schedule' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
-      'Nemotron has 96 layers. The standard 1F1B bubble at high PP is enormous. Interleaved scheduling assigns virtual stages to shrink the bubble by a factor of `v` — look for it in the pipeline schedule selector.',
+      'Nemotron has 96 layers. The standard 1F1B bubble at high PP is enormous. Interleaved scheduling assigns virtual stages to shrink the bubble by a factor of `v` — look for it in the pipeline schedule selector. Watch the pipeline timeline to see how virtual stages change the schedule.',
       'Set the VP parameter. VP must evenly divide the layers per physical stage. Higher VP = smaller bubble but more in-flight microbatches consuming activation memory.',
       'Fill each node with TP and use selective activation checkpointing. The published config also uses sequence parallelism. Try VP values that give fine-grained virtual stages.',
     ],
@@ -490,10 +529,14 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'mfu', operator: '>', value: 0.40, label: 'MFU > 40%' },
     ],
+    expectedChanges: [
+      { field: 'gpuId', check: 'changed', label: 'Changed GPU type' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+    ],
     hints: [
       'Fill each node with TP for fast NVLink communication. LLaMA 3.3 70B fits in memory with activation checkpointing at this scale.',
-      'After winning on H100, try changing to {{a100|A100}}-80GB. The MFU may go up (lower peak is easier to saturate) even though absolute throughput drops.',
-      'Sequence Parallelism improves TP communication overlap. Make sure all standard optimizations are enabled, then focus on TP degree and batch size for best MFU.',
+      'After completing the task on H100, try changing to {{a100|A100}}-80GB. The MFU may go up (lower peak is easier to saturate) even though absolute throughput drops.',
+      'Make sure all standard optimizations are enabled, then focus on TP degree and batch size. Check the Roofline chart to see where your configuration sits relative to the GPU\'s compute and bandwidth ceilings.',
     ],
     successExplanation:
       'GPU architecture determines both the numerator (actual TFLOPS) and denominator ' +
@@ -503,17 +546,15 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       'on A100 and 40% MFU on H100, yet H100 still produces more tokens per second. ' +
       'When choosing hardware, look at absolute throughput and cost-per-token, not just ' +
       'MFU percentage.\n\n' +
-      'Try switching GPUs after winning: A100-80GB (~46% MFU, ~287k tok/s) vs H100 SXM (~41% MFU, ' +
-      '~404k tok/s). The A100 reports higher MFU because its lower peak (312 TFLOPS) is easier to ' +
-      'saturate, but the H100 produces 40% more tokens per second in absolute terms.\n\n' +
+      'After completing the task, try switching GPUs: the A100 reports higher MFU because its lower peak is easier ' +
+      'to saturate, but the H100 produces significantly more tokens per second in absolute terms. ' +
+      'This is the central insight — MFU percentage alone does not tell you which GPU is faster.\n\n' +
       'In production, cost-per-token matters more than MFU. The Training Projection panel shows estimated ' +
-      'cost based on $/GPU-hour (adjustable in the sidebar). Even if the H100 costs 2× per hour, its 40% ' +
-      'higher throughput makes each token cheaper. Training cost = GPU-hours × $/GPU-hour, and GPU-hours = ' +
+      'cost based on $/GPU-hour (adjustable in the sidebar). Training cost = GPU-hours × $/GPU-hour, and GPU-hours = ' +
       'training_time × numGPUs. Higher MFU means shorter training time, which means fewer GPU-hours for ' +
       'the same token budget.\n\n' +
-      'AMD MI300X (192 GB HBM3, 5.3 TB/s bandwidth) and NVIDIA B200 (192 GB HBM3e, 8 TB/s bandwidth) ' +
-      'are the next frontier. Try switching GPUs in the sidebar to see how the MFU/throughput/cost ' +
-      'tradeoff shifts across architectures.',
+      'Try switching to other GPUs in the sidebar (AMD MI300X, B200, etc.) to see how the ' +
+      'MFU/throughput/cost tradeoff shifts across architectures and memory bandwidth tiers.',
   },
 
   // -----------------------------------------------------------------------
@@ -555,6 +596,10 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
       { field: 'mfu', operator: '>', value: 0.35, label: 'MFU > 35%' },
+    ],
+    expectedChanges: [
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'Start with TP=8 (one node), then choose PP. 405B has 126 layers — pick a PP that divides the layers evenly. Then calculate the resulting DP from `TP × PP × DP = totalGPUs`.',

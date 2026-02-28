@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ChevronsUp, ChevronsDown, Lightbulb, X } from 'lucide-react';
+import { ArrowLeft, ChevronsUp, ChevronsDown, Lightbulb, RotateCcw, X, Check } from 'lucide-react';
 import { useGameStore } from '../../stores/game.ts';
 import { getTaskById, getTasksForLevel } from '../../game/tasks/index.ts';
 import { MODE_LABELS, DIFFICULTY_LABELS } from '../../game/constants.ts';
@@ -18,9 +18,13 @@ export function TaskHUD() {
   const hintsRevealed = useGameStore(s => s.hintsRevealed);
   const attempts = useGameStore(s => s.attempts);
   const lastValidation = useGameStore(s => s.lastValidation);
+  const approachValid = useGameStore(s => s.approachValid);
   const revealNextHint = useGameStore(s => s.revealNextHint);
   const openMenu = useGameStore(s => s.openMenu);
+  const resetTask = useGameStore(s => s.resetTask);
   const exit = useGameStore(s => s.exit);
+  const acknowledgeSuccess = useGameStore(s => s.acknowledgeSuccess);
+  const reviewSuccess = useGameStore(s => s.reviewSuccess);
 
   const [hudExpanded, setHudExpanded] = useState(true);
   const [activeHintIndex, setActiveHintIndex] = useState(0);
@@ -45,6 +49,7 @@ export function TaskHUD() {
   const taskNumber = taskIndex + 1;
   const totalTasks = tasks.length;
 
+  const isLast = taskIndex >= tasks.length - 1;
   const totalHints = task.hints.length;
   const hasMoreHints = hintsRevealed < totalHints;
 
@@ -88,6 +93,13 @@ export function TaskHUD() {
           </span>
         )}
 
+        {/* Passed badge (collapsed only) */}
+        {!hudExpanded && lastValidation?.passed && (
+          <span className="flex items-center gap-1 text-xs text-green-400 flex-shrink-0">
+            <Check className="w-3.5 h-3.5" />
+          </span>
+        )}
+
         {/* Mini progress bar (collapsed only) */}
         {!hudExpanded && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -103,6 +115,16 @@ export function TaskHUD() {
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* Reset to task defaults */}
+        <Tooltip text="Reset to task defaults">
+          <button
+            onClick={resetTask}
+            className="text-gray-400 hover:text-gray-300 cursor-pointer p-1 flex-shrink-0"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </Tooltip>
 
         {/* Expand/collapse toggle */}
         <Tooltip text={hudExpanded ? 'Collapse' : 'Expand'}>
@@ -172,6 +194,27 @@ export function TaskHUD() {
             <div className="flex-1">
               <div className="text-sm text-gray-400 mb-1.5">Objectives</div>
               <CriteriaChecklist criteria={task.winningCriteria} validation={lastValidation} />
+              {lastValidation?.passed && !approachValid && (
+                <div className="text-sm text-amber-200/90 bg-amber-900/20 border border-amber-700/30 rounded px-2.5 py-1.5 mt-2">
+                  You hit the targets, but not by using the technique this task teaches. Re-read the briefing and try a different approach.
+                </div>
+              )}
+              {lastValidation?.passed && approachValid && (
+                <div className="flex items-center gap-2 mt-3 -ml-1">
+                  <button
+                    onClick={reviewSuccess}
+                    className="text-sm text-gray-400 hover:text-white cursor-pointer transition-colors px-1 py-1 rounded"
+                  >
+                    Review
+                  </button>
+                  <button
+                    onClick={acknowledgeSuccess}
+                    className="text-sm px-3 py-1 bg-accent hover:bg-accent/80 text-white rounded cursor-pointer transition-colors"
+                  >
+                    {isLast ? 'Complete Level' : 'Next Task →'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Hints */}
@@ -212,6 +255,7 @@ export function TaskHUD() {
               )}
             </div>
           </div>
+
         </div>
       </div>
     </div>

@@ -141,7 +141,7 @@ describe('§2 — Preset re-validation', () => {
         strategyConfig: { tp: 8, pp: 8, dp: 16, ep: 1, dpType: 'ddp', sequenceParallel: false, pipelineSchedule: 'interleaved-1f1b', interleavedStages: 2 },
         globalBatchSize: 1536, microBatchSize: 1, activationCheckpointing: true, flashAttention: false, mixedPrecision: 'bf16',
       },
-      pinned: { mfu: 0.4324, hfu: 0.5765, memUtil: 0.9128, tokPerSec: 131417, stepTimeMs: 23937 },
+      pinned: { mfu: 0.4199, hfu: 0.5599, memUtil: 0.9128, tokPerSec: 127632, stepTimeMs: 24647 },
     },
     {
       name: 'DeepSeek V3 (2048× H800)',

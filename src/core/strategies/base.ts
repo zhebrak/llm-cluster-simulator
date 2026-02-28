@@ -738,7 +738,7 @@ export function computeNonMatmulTimeMs(
   model: ModelSpec,
   tokensPerMicroBatch: number,
   gpu: GPUSpec,
-  options?: { tp?: number; sp?: boolean; pp?: number; ep?: number },
+  options?: { tp?: number; sp?: boolean; pp?: number; ep?: number; flashAttention?: boolean; seqLength?: number; microBatchSize?: number },
 ): number {
   const tp = options?.tp ?? 1;
   const sp = options?.sp ?? false;
@@ -789,6 +789,18 @@ export function computeNonMatmulTimeMs(
   // PP: each GPU stage processes numLayers/pp layers
   const layersPerStage = pp > 1 ? Math.ceil(model.numLayers / pp) : model.numLayers;
   totalBytes = totalBytes * layersPerStage / model.numLayers;
+
+  // Without Flash Attention, standard attention materializes the full seq×seq score matrix
+  // in HBM per layer: pre-softmax scores (2B) + post-softmax probs (2B) + dropout mask (1B)
+  // = 2.5× the single-tensor estimate (Korthikanti et al. 2022, Table 1).
+  // With FA2, all done in SRAM tiles — no intermediate HBM traffic.
+  if (options?.flashAttention === false && options?.seqLength && options?.microBatchSize) {
+    const headsPerGPU = model.numAttentionHeads / tp;
+    const seq = options.seqLength;
+    const mbs = options.microBatchSize;
+    const attentionHBMPerLayer = headsPerGPU * seq * seq * bytesPerElem * mbs * 2.5;
+    totalBytes += attentionHBMPerLayer * layersPerStage;
+  }
 
   // Effective memory BW for elementwise kernels (~65% of peak)
   const ELEMENTWISE_BW_EFFICIENCY = 0.65;

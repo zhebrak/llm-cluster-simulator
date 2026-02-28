@@ -234,7 +234,7 @@ function AnalysisPanel({ bottleneck, bottleneckColor, recommendations, blurred }
       <div className="relative">
         {blurred && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <span className="text-xs text-gray-500">Hidden during learning mode</span>
+            <span className="text-xs text-gray-500">Hidden in learning mode</span>
           </div>
         )}
       <div className={`flex gap-6${blurred ? ' blur-sm pointer-events-none select-none' : ''}`}>
@@ -1914,7 +1914,7 @@ export function ResultsDashboard() {
             <div className="mt-5 text-left max-w-lg relative">
               {inTask && (
                 <div className="absolute inset-0 flex items-center justify-center z-10">
-                  <span className="text-xs text-gray-500">Hidden during learning mode</span>
+                  <span className="text-xs text-gray-500">Hidden in learning mode</span>
                 </div>
               )}
               <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>
@@ -1970,7 +1970,7 @@ export function ResultsDashboard() {
           <div className="mt-5 text-left w-full max-w-md relative">
             {inTask && (
               <div className="absolute inset-0 flex items-center justify-center z-10">
-                <span className="text-xs text-gray-500">Hidden during learning mode</span>
+                <span className="text-xs text-gray-500">Hidden in learning mode</span>
               </div>
             )}
             <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>

@@ -11,6 +11,11 @@ function App() {
   const loadedFromShare = useRef(false);
   const [showWelcome, setShowWelcome] = useState(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.has('welcome')) {
+      localStorage.removeItem('llm-sim-welcomed');
+      history.replaceState({}, '', window.location.pathname);
+      return true;
+    }
     if (params.has('config') || params.has('preset') || params.has('learn')) return false;
     return !localStorage.getItem('llm-sim-welcomed');
   });

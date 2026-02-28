@@ -198,16 +198,16 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'training-beginner-04': { activationCheckpointing: true },  // already has BF16 from setup
   'training-beginner-05': { flashAttention: true },  // already has BF16+AC from setup
   'training-beginner-06': { numGPUs: 8 },  // Scale from 1→8 GPUs for DDP throughput
-  'training-beginner-07': { globalBatchSize: 64 },  // 16 GPUs (2 nodes), increase GBS for FSDP overlap
+  'training-beginner-07': { strategyType: 'fsdp' },  // DDP→FSDP to fit Qwen3-14B on 8 A100s
   'training-beginner-08': { microBatchSize: 2 },  // 8 GPUs (1 node), reduce MBS from 4 to fit in memory without AC
-  'training-beginner-09': { strategyType: 'fsdp' },  // BF16+FA+AC, DDP→FSDP
+  'training-beginner-09': { numGPUs: 16, globalBatchSize: 16 },  // Scale to 2 nodes for throughput > 40k tok/s
   'training-beginner-10': { activationCheckpointing: false },  // Disable AC — 7B fits without it on 8 H100s, MFU jumps from ~40% to ~52%
 
   // Training intermediate (all have BF16+FA+AC from setup)
   'training-intermediate-01': { strategyType: 'fsdp-tp', tpDegree: 4, sequenceParallel: true },  // FSDP→FSDP-TP
   'training-intermediate-02': { tpDegree: 4, globalBatchSize: 128 },
   'training-intermediate-03': { tpDegree: 4, globalBatchSize: 128 },
-  'training-intermediate-04': { tpDegree: 8, ppDegree: 4, globalBatchSize: 256 },
+  'training-intermediate-04': { tpDegree: 8, ppDegree: 4 },
   'training-intermediate-05': { globalBatchSize: 256 },  // increase GBS to reduce bubble
   'training-intermediate-06': { pipelineSchedule: 'interleaved-1f1b', interleavedStages: 4, globalBatchSize: 128 },  // switch to interleaved
   'training-intermediate-07': { sequenceParallel: true },  // SP reduces activation memory, improves MFU
@@ -228,7 +228,7 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'training-advanced-10': { tpDegree: 8, ppDegree: 8, pipelineSchedule: 'interleaved-1f1b', interleavedStages: 2, globalBatchSize: 512 },
 
   // Inference beginner
-  'inference-beginner-01': { weightPrecision: 'bf16' },  // FP32→BF16 weight precision for decode speed
+  'inference-beginner-01': { weightPrecision: 'fp8' },   // quantize for throughput
   'inference-beginner-02': { weightPrecision: 'int8' },
   'inference-beginner-03': { batchSize: 8 },  // reduce batch from 32 to avoid OOM
   'inference-beginner-04': { weightPrecision: 'int8' },  // INT8 pushes throughput above 80 tok/s
@@ -243,11 +243,11 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'inference-intermediate-01': { tensorParallel: 4 },
   'inference-intermediate-02': { tensorParallel: 8 },
   'inference-intermediate-03': { tensorParallel: 8, weightPrecision: 'fp8' },
-  'inference-intermediate-04': { tensorParallel: 2 },
-  'inference-intermediate-05': { kvCachePrecision: 'fp8' },  // KV cache quant to fit batch=32 at 16K context with TP=4
-  'inference-intermediate-06': { batchSize: 32 },  // TP=8 from setup, just increase batch
-  'inference-intermediate-07': { tensorParallel: 4 },
-  'inference-intermediate-08': { weightPrecision: 'int8' },  // INT8 pushes 13B past 120 tok/s
+  'inference-intermediate-04': { tensorParallel: 4 },  // Reduce TP from 8→4: 2 replicas, throughput > 1000
+  'inference-intermediate-05': { kvCachePrecision: 'fp8' },  // KV quant to fit batch=32 at 16K, throughput > 135
+  'inference-intermediate-06': { batchSize: 48 },  // A100 TP=8 from setup, batch=48: throughput > 1200 AND TPOT < 15ms
+  'inference-intermediate-07': { tensorParallel: 4, weightPrecision: 'int4', batchSize: 4 },  // RTX 4090 x4: INT4+TP4+batch4 for TPOT<25ms AND cost<$4/Mtok
+  'inference-intermediate-08': { gpuId: 'h100-sxm', batchSize: 2 },  // A10G can't reach 120 tok/s — switch to H100
   'inference-intermediate-09': { tensorParallel: 4, speculativeDecoding: true, draftModelId: 'llama2-7b' },
   'inference-intermediate-10': { tensorParallel: 4, weightPrecision: 'fp8' },
 
@@ -255,12 +255,12 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'inference-advanced-01': { tensorParallel: 8, weightPrecision: 'int4' },  // FP8 OOMs; INT4 fits
   'inference-advanced-02': { tensorParallel: 8, expertParallel: 2, weightPrecision: 'fp8', batchSize: 8 },
   'inference-advanced-03': { tensorParallel: 8, weightPrecision: 'fp8', speculativeDecoding: true, draftModelId: 'llama3.1-8b' },  // merged spec decoding mastery
-  'inference-advanced-04': { tensorParallel: 1 },  // TP=8→1 creates 8 replicas, throughput > 675
+  'inference-advanced-04': { tensorParallel: 8 },  // TP=2→8 divides prefill compute, TTFT < 2500
   'inference-advanced-05': { tensorParallel: 2, weightPrecision: 'fp8' },  // BF16+TP=4→FP8+TP=2 for more replicas, throughput > 250
-  'inference-advanced-06': { tensorParallel: 2, weightPrecision: 'int8', batchSize: 32 },  // A100 (no FP8)
+  'inference-advanced-06': { tensorParallel: 2, weightPrecision: 'int4', batchSize: 32 },  // L40S: INT4 enables TP=2, 4 replicas
   'inference-advanced-07': { tensorParallel: 16, weightPrecision: 'fp8', kvCachePrecision: 'fp8' },
-  'inference-advanced-08': { tensorParallel: 8, weightPrecision: 'int4' },  // FP8 OOMs; INT4 fits
-  'inference-advanced-09': { tensorParallel: 4, weightPrecision: 'int4' },
+  'inference-advanced-08': { weightPrecision: 'fp8', batchSize: 4 },  // Latency SLA: FP8 + batch=4 meets TTFT/TPOT/throughput
+  'inference-advanced-09': { tensorParallel: 4, weightPrecision: 'int8', batchSize: 4 },  // Mixtral 8x7B on 4x RTX 4090: INT8 + TP=4
   'inference-advanced-10': { tensorParallel: 8, weightPrecision: 'fp8', batchSize: 16 },
 };
 
@@ -332,9 +332,9 @@ describe('Hint progressions — key tasks show improvement', () => {
     expect(fixedCtx.memoryUtilization).toBeLessThan(0.85);
   });
 
-  it('training-beginner-09: DDP+13B OOMs → FSDP fits', () => {
-    const task = getTaskById('training-beginner-09')!;
-    // Default: DDP → should OOM with 13B on 8 GPUs
+  it('training-beginner-07: DDP+14B OOMs → FSDP fits', () => {
+    const task = getTaskById('training-beginner-07')!;
+    // Default: DDP → should OOM with Qwen3-14B on 8 A100 GPUs
     const defaultCtx = buildTrainingContext(task.setup);
     expect(defaultCtx.memoryUtilization).toBeGreaterThan(1.0);
 

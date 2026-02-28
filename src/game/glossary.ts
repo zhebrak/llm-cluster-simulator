@@ -40,6 +40,11 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     definition:
       '32-bit floating point. 4 bytes per value. Used for optimizer states and master weights.',
   },
+  fp16: {
+    display: 'FP16',
+    definition:
+      '16-bit floating point. 2 bytes per value. Narrower exponent range than BF16 — requires loss scaling for stable training.',
+  },
   bf16: {
     display: 'BF16',
     definition:
@@ -70,17 +75,22 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     definition:
       'Training with lower precision (BF16/FP8) for speed while keeping master weights and critical accumulations in FP32.',
   },
+  quantization: {
+    display: 'quantization',
+    definition:
+      'Reducing numerical precision of model weights or activations to use less memory and bandwidth. Common formats: INT8, INT4, NF4.',
+  },
 
   // ── Hardware ──────────────────────────────────────────────────────────
   nvlink: {
     display: 'NVLink',
     definition:
-      'High-bandwidth GPU-to-GPU interconnect within a node. H100 NVLink 4.0: 900 GB/s bidirectional.',
+      'High-bandwidth GPU-to-GPU interconnect within a node. Bandwidth varies by generation: 300 GB/s (V100) to 1800 GB/s (B200) bidirectional.',
   },
   infiniband: {
     display: 'InfiniBand',
     definition:
-      'High-speed network fabric connecting GPU nodes in a cluster. HDR: 200 GB/s, NDR: 400 GB/s per node.',
+      'High-speed network fabric for connecting GPU nodes. One of several options alongside RoCEv2 and proprietary fabrics. Bandwidth varies: HDR 200 GB/s, NDR 400 GB/s, XDR 800 GB/s per node.',
   },
   pcie: {
     display: 'PCIe',
@@ -96,6 +106,11 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     display: 'SRAM',
     definition:
       'Static RAM — small, fast on-chip cache in each streaming multiprocessor. Orders of magnitude faster than HBM but much smaller.',
+  },
+  'cuda-cores': {
+    display: 'CUDA cores',
+    definition:
+      'Standard GPU processing units for general-purpose computation. Much slower than Tensor Cores for matrix operations used in deep learning.',
   },
   'tensor-cores': {
     display: 'Tensor Cores',
@@ -147,7 +162,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   tp: {
     display: 'TP',
     definition:
-      'Tensor Parallelism — splits each layer\'s weight matrices across GPUs. Requires an AllReduce after every layer. Best over NVLink.',
+      'Tensor Parallelism — splits each layer\'s weight matrices across GPUs. Requires an AllReduce after every layer. Best over fast intra-node interconnects (NVLink, Infinity Fabric).',
   },
   pp: {
     display: 'PP',
@@ -182,12 +197,12 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   '3d-parallel': {
     display: '3D parallelism',
     definition:
-      'Combining TP (intra-node, NVLink) + PP (cross-node, pipelined) + DP (throughput scaling). Standard recipe for 100B+ models.',
+      'Combining TP (intra-node, fast interconnect) + PP (cross-node, pipelined) + DP (throughput scaling). Standard recipe for 100B+ models.',
   },
   '2d-parallel': {
     display: '2D parallelism',
     definition:
-      'Combining two parallelism dimensions — typically FSDP (inter-node) + TP (intra-node). Workhorse for clusters up to a few hundred GPUs.',
+      'Combining two parallelism dimensions — typically FSDP (inter-node) + TP (intra-node). Standard approach for clusters up to a few hundred GPUs.',
   },
 
   // ── Communication Operations ──────────────────────────────────────────
@@ -248,10 +263,20 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     definition:
       'Total samples across all GPUs per optimization step. GBS = MBS × DP × GA.',
   },
+  'forward-pass': {
+    display: 'forward pass',
+    definition:
+      'Computing model outputs by passing input through all layers sequentially. Stores intermediate activations needed for the backward pass.',
+  },
   'backward-pass': {
     display: 'backward pass',
     definition:
       'Computing gradients by propagating loss backward through the network. Requires stored activations from the forward pass.',
+  },
+  gradients: {
+    display: 'gradients',
+    definition:
+      'Derivatives of the loss with respect to each parameter. Computed in the backward pass and used by the optimizer to update weights.',
   },
   'optimizer-states': {
     display: 'optimizer states',
@@ -262,6 +287,11 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     display: 'backward prefetch',
     definition:
       'FSDP optimization: prefetching the next layer\'s parameters during backward computation, overlapping AllGather with compute.',
+  },
+  mlp: {
+    display: 'MLP',
+    definition:
+      'Multi-Layer Perceptron — the feed-forward network in each transformer layer. Typically two or three linear layers with an activation function.',
   },
   'flash-attention': {
     display: 'Flash Attention',

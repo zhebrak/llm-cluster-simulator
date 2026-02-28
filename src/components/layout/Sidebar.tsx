@@ -732,7 +732,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
       <div className="px-3 pt-1.5 pb-3 border-b border-gray-800 relative">
         {inTask && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <span className="text-xs text-gray-500">Hidden during learning mode</span>
+            <span className="text-xs text-gray-500">Hidden in learning mode</span>
           </div>
         )}
         <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>

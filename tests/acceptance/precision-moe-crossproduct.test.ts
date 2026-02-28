@@ -211,16 +211,18 @@ describe('MoE active params correctness', () => {
 
       it('prefillFLOPs uses activeParams (not totalParams)', () => {
         const flops = prefillFLOPs(model, 1024);
-        const expectedFromActive = 2 * model.activeParams! * 1024;
+        const floorFromActive = 2 * model.activeParams! * 1024;
         const wrongFromTotal = 2 * model.totalParams * 1024;
 
-        expect(flops).toBe(expectedFromActive);
+        // prefillFLOPs >= 2*activeParams*tokens (attention score FLOPs add to the base)
+        expect(flops).toBeGreaterThanOrEqual(floorFromActive);
         expect(flops).toBeLessThan(wrongFromTotal);
       });
 
       it('decodeFLOPs uses activeParams (not totalParams)', () => {
         const flops = decodeFLOPs(model);
-        expect(flops).toBe(2 * model.activeParams!);
+        // decodeFLOPs >= 2*activeParams (attention score FLOPs add to the base)
+        expect(flops).toBeGreaterThanOrEqual(2 * model.activeParams!);
         expect(flops).toBeLessThan(2 * model.totalParams);
       });
 
@@ -250,9 +252,10 @@ describe('Dense model activeParams === totalParams', () => {
       expect(model.activeParams).toBe(model.totalParams);
     });
 
-    it(`${m.name}: prefillFLOPs = 2 × totalParams × tokens`, () => {
+    it(`${m.name}: prefillFLOPs >= 2 × totalParams × tokens`, () => {
       const model = getModel(m.id)!;
-      expect(prefillFLOPs(model, 1000)).toBe(2 * model.totalParams * 1000);
+      // prefillFLOPs includes attention score FLOPs (QK^T + scores*V) beyond 2*P*T
+      expect(prefillFLOPs(model, 1000)).toBeGreaterThanOrEqual(2 * model.totalParams * 1000);
     });
   }
 });

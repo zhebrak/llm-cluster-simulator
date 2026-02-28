@@ -1,5 +1,5 @@
 /**
- * Tests for game mode validation — criteria evaluation
+ * Tests for game mode validation — criteria evaluation + expected-change validation
  */
 
 import { describe, it, expect } from 'vitest';
@@ -8,8 +8,10 @@ import {
   evaluateCriterion,
   validateTask,
   buildValidationContext,
+  validateExpectedChanges,
 } from '../../src/game/validation.ts';
-import type { WinningCriterion } from '../../src/game/types.ts';
+import type { TaskConfigSnapshot } from '../../src/game/validation.ts';
+import type { WinningCriterion, ExpectedChange } from '../../src/game/types.ts';
 
 describe('resolvePath', () => {
   it('resolves top-level fields', () => {
@@ -112,6 +114,167 @@ describe('validateTask', () => {
     expect(result.passed).toBe(false);
     expect(result.results).toHaveLength(2);
     expect(result.results.every(r => !r.met)).toBe(true);
+  });
+});
+
+// ── validateExpectedChanges ──────────────────────────────────────────
+
+/** Helper: create a base snapshot with defaults */
+function makeSnapshot(overrides: Partial<TaskConfigSnapshot> = {}): TaskConfigSnapshot {
+  return {
+    modelId: 'llama3.1-8b', gpuId: 'a100-sxm-80gb', numGPUs: 1,
+    precision: 'fp32', activationCheckpointing: false, checkpointingGranularity: 'full',
+    flashAttention: false, globalBatchSize: 64, microBatchSize: 64,
+    sequenceLength: 2048, sequenceParallel: false, strategyType: 'ddp',
+    tpDegree: 1, ppDegree: 1, epDegree: 1, cpDegree: 1,
+    pipelineSchedule: '1f1b', interleavedStages: 1, finetuningMethod: 'full',
+    loraRank: 16, loraTargetModules: 'q_v',
+    weightPrecision: 'fp32', kvCachePrecision: 'fp16', batchSize: 1,
+    inputSeqLen: 512, outputSeqLen: 128, tensorParallel: 1, expertParallel: 1,
+    pagedAttention: false, continuousBatching: false, speculativeDecoding: false,
+    ...overrides,
+  };
+}
+
+function makeChange(field: string, check: ExpectedChange['check']): ExpectedChange {
+  return { field, check, label: `test: ${field} ${check}` };
+}
+
+describe('validateExpectedChanges — check semantics', () => {
+  const snapshot = makeSnapshot();
+
+  it('changed: passes when field differs from snapshot', () => {
+    const current = makeSnapshot({ precision: 'bf16' });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('precision', 'changed')]);
+    expect(result.valid).toBe(true);
+    expect(result.failedChecks).toHaveLength(0);
+  });
+
+  it('changed: fails when field same as snapshot', () => {
+    const current = makeSnapshot(); // identical
+    const result = validateExpectedChanges(snapshot, current, [makeChange('precision', 'changed')]);
+    expect(result.valid).toBe(false);
+    expect(result.failedChecks).toHaveLength(1);
+  });
+
+  it('unchanged: passes when field same as snapshot', () => {
+    const current = makeSnapshot();
+    const result = validateExpectedChanges(snapshot, current, [makeChange('modelId', 'unchanged')]);
+    expect(result.valid).toBe(true);
+  });
+
+  it('unchanged: fails when field differs', () => {
+    const current = makeSnapshot({ modelId: 'llama3.3-70b' });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('modelId', 'unchanged')]);
+    expect(result.valid).toBe(false);
+  });
+
+  it('increased: passes when current > snapshot', () => {
+    const current = makeSnapshot({ numGPUs: 8 });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('numGPUs', 'increased')]);
+    expect(result.valid).toBe(true);
+  });
+
+  it('increased: fails when current <= snapshot', () => {
+    const current = makeSnapshot({ numGPUs: 1 });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('numGPUs', 'increased')]);
+    expect(result.valid).toBe(false);
+  });
+
+  it('increased: fails when current equals snapshot', () => {
+    const current = makeSnapshot();
+    const result = validateExpectedChanges(snapshot, current, [makeChange('numGPUs', 'increased')]);
+    expect(result.valid).toBe(false);
+  });
+
+  it('decreased: passes when current < snapshot', () => {
+    const current = makeSnapshot({ microBatchSize: 4 });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('microBatchSize', 'decreased')]);
+    expect(result.valid).toBe(true);
+  });
+
+  it('decreased: fails when current >= snapshot', () => {
+    const current = makeSnapshot({ microBatchSize: 64 });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('microBatchSize', 'decreased')]);
+    expect(result.valid).toBe(false);
+  });
+
+  it('enabled: passes when current === true', () => {
+    const current = makeSnapshot({ activationCheckpointing: true });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('activationCheckpointing', 'enabled')]);
+    expect(result.valid).toBe(true);
+  });
+
+  it('enabled: fails when current !== true', () => {
+    const current = makeSnapshot({ activationCheckpointing: false });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('activationCheckpointing', 'enabled')]);
+    expect(result.valid).toBe(false);
+  });
+
+  it('disabled: passes when current === false', () => {
+    const current = makeSnapshot({ activationCheckpointing: false });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('activationCheckpointing', 'disabled')]);
+    expect(result.valid).toBe(true);
+  });
+
+  it('disabled: fails when current !== false', () => {
+    const current = makeSnapshot({ activationCheckpointing: true });
+    const result = validateExpectedChanges(snapshot, current, [makeChange('activationCheckpointing', 'disabled')]);
+    expect(result.valid).toBe(false);
+  });
+});
+
+describe('validateExpectedChanges — composite', () => {
+  const snapshot = makeSnapshot();
+
+  it('all checks pass → valid with empty failedChecks', () => {
+    const current = makeSnapshot({ precision: 'bf16' }); // changed precision, unchanged modelId
+    const changes = [
+      makeChange('precision', 'changed'),
+      makeChange('modelId', 'unchanged'),
+    ];
+    const result = validateExpectedChanges(snapshot, current, changes);
+    expect(result.valid).toBe(true);
+    expect(result.failedChecks).toHaveLength(0);
+  });
+
+  it('any check fails → invalid with failing items', () => {
+    const current = makeSnapshot({ precision: 'bf16', modelId: 'llama3.3-70b' }); // changed both
+    const changes = [
+      makeChange('precision', 'changed'),
+      makeChange('modelId', 'unchanged'), // this will fail
+    ];
+    const result = validateExpectedChanges(snapshot, current, changes);
+    expect(result.valid).toBe(false);
+    expect(result.failedChecks).toHaveLength(1);
+    expect(result.failedChecks[0].field).toBe('modelId');
+  });
+
+  it('empty expectedChanges → valid', () => {
+    const result = validateExpectedChanges(snapshot, snapshot, []);
+    expect(result.valid).toBe(true);
+    expect(result.failedChecks).toHaveLength(0);
+  });
+
+  it('undefined expectedChanges → valid (backward compat)', () => {
+    const result = validateExpectedChanges(snapshot, snapshot, undefined);
+    expect(result.valid).toBe(true);
+    expect(result.failedChecks).toHaveLength(0);
+  });
+
+  it('multiple failures are all reported', () => {
+    const current = makeSnapshot(); // no changes at all
+    const changes = [
+      makeChange('precision', 'changed'),
+      makeChange('numGPUs', 'increased'),
+      makeChange('modelId', 'unchanged'), // this passes
+    ];
+    const result = validateExpectedChanges(snapshot, current, changes);
+    expect(result.valid).toBe(false);
+    expect(result.failedChecks).toHaveLength(2);
+    const failedFields = result.failedChecks.map(c => c.field);
+    expect(failedFields).toContain('precision');
+    expect(failedFields).toContain('numGPUs');
   });
 });
 

@@ -132,7 +132,7 @@ describe('Anchor Benchmarks', () => {
   // ─── 8. BLOOM 176B on 384 A100-80GB ──────────────────────────────
   // Source: BigScience (2022)
   // Config: ZeRO-1-TP-PP, TP=4, PP=12, DP=8, GBS=2048, MBS=2, seq=2048
-  // Published: ~48% MFU (150 TFLOPS, 8PD convention / 312 peak)
+  // Published: ~48% MFU (150 TFLOPS / 312 peak, Megatron-LM 72×B×s×L×h² = 6PD)
   // First zero1-tp-pp anchor; ALiBi, non-gated MLP
   // Marginally OOMs in sim (81.25 GB vs 80 GB) — use rawSim
   it('BLOOM 176B × 384 A100: published 48% MFU [0.45, 0.51]', () => {
@@ -147,8 +147,8 @@ describe('Anchor Benchmarks', () => {
   // ─── 9. MT-NLG 530B on 2240 A100-80GB ────────────────────────────
   // Source: Smith et al. (2022)
   // Config: ZeRO-1-TP-PP, TP=8, PP=35, DP=8, GBS=1920, MBS=1, seq=2048
-  // Published: ~40% MFU (126 TFLOPS, 8PD convention / 312 peak)
-  // Tier 2: 8PD TFLOPS convention (not 6PD), 2021 paper, +4pp overshoot.
+  // Published: ~40% MFU (126 TFLOPS / 312 peak, Megatron-LM 72×B×s×L×h² = 6PD)
+  // Tier 2: 2021 paper, +3.4pp overshoot.
   // DP scaling points remain validated in §4.
   it('MT-NLG 530B × 2240 A100: published 40% MFU [0.37, 0.45]', () => {
     const config = toSimConfig(PUBLISHED.mt_nlg_530b);

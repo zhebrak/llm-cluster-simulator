@@ -14,6 +14,7 @@ export function SuccessModal() {
   const activeDifficulty = useGameStore(s => s.activeDifficulty);
   const lastValidation = useGameStore(s => s.lastValidation);
   const acknowledgeSuccess = useGameStore(s => s.acknowledgeSuccess);
+  const dismissSuccess = useGameStore(s => s.dismissSuccess);
 
   if (!activeTaskId || !activeMode || !activeDifficulty) return null;
   const task = getTaskById(activeTaskId);
@@ -72,23 +73,31 @@ export function SuccessModal() {
           </div>
         </div>
 
-        {/* Action button */}
-        <button
-          onClick={acknowledgeSuccess}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent/80 text-white rounded-lg font-medium transition-colors cursor-pointer"
-        >
-          {isLast ? (
-            <>
-              <Trophy className="w-4 h-4" />
-              Complete Level
-            </>
-          ) : (
-            <>
-              Next Task
-              <ArrowRight className="w-4 h-4" />
-            </>
-          )}
-        </button>
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={dismissSuccess}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600 rounded-lg font-medium transition-colors cursor-pointer"
+          >
+            Explore Results
+          </button>
+          <button
+            onClick={acknowledgeSuccess}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent/80 text-white rounded-lg font-medium transition-colors cursor-pointer"
+          >
+            {isLast ? (
+              <>
+                <Trophy className="w-4 h-4" />
+                Complete Level
+              </>
+            ) : (
+              <>
+                Next Task
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

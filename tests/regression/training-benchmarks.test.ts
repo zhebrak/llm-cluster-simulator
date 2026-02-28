@@ -1210,13 +1210,13 @@ describe('Inference Latency — Comprehensive', () => {
     expect(r.latency.tpot).toBeGreaterThan(5.60); expect(r.latency.tpot).toBeLessThan(7.58);
   });
 
-  it('LLaMA 4 Scout × 8 H100 TP=8: TTFT ≈ 9.3ms, TPOT ≈ 1.6ms (MoE active)', () => {
+  it('LLaMA 4 Scout × 8 H100 TP=8: TTFT ≈ 8.1ms, TPOT ≈ 2.9ms (MoE active)', () => {
     const r = infer({ modelId: 'llama4-scout', gpuId: 'h100-sxm', numGPUs: 8,
       batchSize: 1, inputSeqLen: 512, outputSeqLen: 256, weightPrecision: 'bf16', kvCachePrecision: 'bf16', tensorParallel: 8 });
     expect(r.success).toBe(true);
     // Prefill reads nearly all expert weights (coupon-collector over 512 tokens)
-    expect(r.latency.ttft).toBeGreaterThan(9.3 * 0.7); expect(r.latency.ttft).toBeLessThan(9.3 * 1.3);
-    expect(r.latency.tpot).toBeGreaterThan(1.39); expect(r.latency.tpot).toBeLessThan(1.88);
+    expect(r.latency.ttft).toBeGreaterThan(8.1 * 0.7); expect(r.latency.ttft).toBeLessThan(8.1 * 1.3);
+    expect(r.latency.tpot).toBeGreaterThan(2.47); expect(r.latency.tpot).toBeLessThan(3.34);
   });
 
   // --- Gemma 2 ---
@@ -1353,13 +1353,14 @@ describe('Inference Latency — Comprehensive', () => {
   });
 
   // --- MoE Models ---
-  it('DeepSeek-MoE 16B × 1 H100: TTFT ≈ 7.3ms, TPOT ≈ 2.82ms', () => {
+  it('DeepSeek-MoE 16B × 1 H100: TTFT ≈ 9.8ms, TPOT ≈ 2.87ms', () => {
     const r = infer({ modelId: 'deepseek-moe-16b', gpuId: 'h100-sxm', numGPUs: 1,
       batchSize: 1, inputSeqLen: 512, outputSeqLen: 256, weightPrecision: 'bf16', kvCachePrecision: 'bf16', tensorParallel: 1 });
     expect(r.success).toBe(true);
-    // At batch=1, MoE reads ~activeParams weights → lower TTFT
-    expect(r.latency.ttft).toBeGreaterThan(5.5); expect(r.latency.ttft).toBeLessThan(10.0);
-    expect(r.latency.tpot).toBeGreaterThan(2.39); expect(r.latency.tpot).toBeLessThan(3.24);
+    // At batch=1 seqLen=512, coupon collector saturates → all 64 experts loaded (~32.75GB)
+    // Memory-bound: 32.75GB / 3.35 TB/s ≈ 9.78ms > compute time ≈ 7.3ms
+    expect(r.latency.ttft).toBeGreaterThan(8.3); expect(r.latency.ttft).toBeLessThan(11.3);
+    expect(r.latency.tpot).toBeGreaterThan(2.44); expect(r.latency.tpot).toBeLessThan(3.30);
   });
 
   it('DBRX 132B × 8 H100 TP=8: TTFT ≈ 12.9ms, TPOT ≈ 3.4ms', () => {
@@ -1378,13 +1379,13 @@ describe('Inference Latency — Comprehensive', () => {
     expect(r.latency.tpot).toBeGreaterThan(3.04); expect(r.latency.tpot).toBeLessThan(4.11);
   });
 
-  it('DeepSeek-V2 236B × 8 H100 TP=8: TTFT ≈ 19ms, TPOT ≈ 2.65ms', () => {
+  it('DeepSeek-V2 236B × 8 H100 TP=8: TTFT ≈ 17.6ms, TPOT ≈ 3.63ms', () => {
     const r = infer({ modelId: 'deepseek-v2', gpuId: 'h100-sxm', numGPUs: 8,
       batchSize: 1, inputSeqLen: 512, outputSeqLen: 256, weightPrecision: 'bf16', kvCachePrecision: 'bf16', tensorParallel: 8 });
     expect(r.success).toBe(true);
     // Prefill reads nearly all expert weights (coupon-collector over 512 tokens)
-    expect(r.latency.ttft).toBeGreaterThan(19.0 * 0.7); expect(r.latency.ttft).toBeLessThan(19.0 * 1.3);
-    expect(r.latency.tpot).toBeGreaterThan(2.25); expect(r.latency.tpot).toBeLessThan(3.04);
+    expect(r.latency.ttft).toBeGreaterThan(17.6 * 0.7); expect(r.latency.ttft).toBeLessThan(17.6 * 1.3);
+    expect(r.latency.tpot).toBeGreaterThan(3.08); expect(r.latency.tpot).toBeLessThan(4.17);
   });
 
   // --- OLMo ---

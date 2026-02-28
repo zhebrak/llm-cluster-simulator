@@ -21,6 +21,8 @@ export function GameOverlay() {
   const activeMode = useGameStore(s => s.activeMode);
   const activeDifficulty = useGameStore(s => s.activeDifficulty);
   const lastValidation = useGameStore(s => s.lastValidation);
+  const approachValid = useGameStore(s => s.approachValid);
+  const successDismissed = useGameStore(s => s.successDismissed);
   const showLevelComplete = useGameStore(s => s.showLevelComplete);
   const clearLevel = useGameStore(s => s.clearLevel);
   const resetLevel = useGameStore(s => s.resetLevel);
@@ -45,8 +47,8 @@ export function GameOverlay() {
     return <GameMenu />;
   }
 
-  // Active task with passing validation → success modal (HUD behind)
-  if (lastValidation?.passed) {
+  // Active task with passing validation AND correct approach → success modal (HUD behind), unless dismissed
+  if (lastValidation?.passed && approachValid && !successDismissed) {
     return (
       <>
         <TaskHUD />

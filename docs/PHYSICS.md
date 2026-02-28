@@ -617,6 +617,10 @@ When `raw === 0` (single-GPU, dp=1), returns 0 — no overhead for non-existent 
 **Gradient bucketing**: DDP and ZeRO use 25 MB default bucket size for AllReduce
 chunking (`BUCKET_SIZE_BYTES` in `overlap.ts`).
 
+**Inference TP AllReduce**: Uses tree-round alpha with layer-pipelining overlap —
+independent constants from training (5us/round NVLink, 15us/round PCIe). See
+`docs/INFERENCE.md` for the full model.
+
 **Hierarchical AllReduce** (`collectives/cost-model.ts`): When DP spans multiple
 nodes, intra-node and inter-node phases overlap by 30% with a combined efficiency
 factor of 0.9.
@@ -1508,3 +1512,50 @@ for 11 total.
 - 1 parameter is a structural guard: `DP_BW_FLOOR` exists as an extrapolation
   safety net that binds at DP ≈ 92700 — unreachable in any practical config.
   It is intentionally unconstrainable.
+
+### Inference Sensitivity Analysis
+
+11 perturbable inference parameters: 0 physics, 5 grounded-empirical, 5 fitted,
+plus 1 memory-only (grounded-empirical). ±5% perturbation across 5 inference
+benchmarks measuring throughput, TPOT, and TTFT deltas.
+
+Run: `npx tsx scripts/run-inference-sensitivity-analysis.ts`.
+
+**Benchmarks:** LLaMA 8B 1×H100 BF16 B=32, LLaMA 70B 4×H100 TP=4 BF16 B=16,
+DeepSeek V3 8×H200 TP=4 EP=2 FP8 B=32, LLaMA 70B 1×H200 INT4 B=8,
+LLaMA 8B 1×H100 CB B=64.
+
+| Parameter | Value | Tier | Max \|ΔThroughput\| | Max \|ΔTPOT\| | Max \|ΔTTFT\| | Classification |
+|-----------|-------|------|---------------------|---------------|---------------|----------------|
+| PREFILL_RESIDUAL | 0.400 | fitted | 4.85% | 0.00% | 10.03% | high-sensitivity |
+| BW_EFF_FLOOR | 0.350 | fitted | 4.57% | 4.73% | 0.00% | high-sensitivity |
+| BW_EFF_SCALE | 5.00 | fitted | 1.06% | 1.18% | 0.00% | high-sensitivity |
+| TP_COMM_EFFICIENCY | 0.800 | grounded-empirical | 0.53% | 0.38% | 1.45% | conditional |
+| EP_PREFILL_OVERLAP | 0.150 | fitted | 0.20% | 0.00% | 1.42% | conditional |
+| CB_SCHEDULING_BASE | 0.010 | grounded-empirical | 0.14% | 0.15% | 0.00% | conditional |
+| DECODE_SAMPLING_OVERHEAD_MS | 0.030 | grounded-empirical | 0.04% | 0.04% | 0.00% | low-sensitivity |
+| CB_PREFILL_INTERFERENCE_MAX | 0.100 | fitted | 0.02% | 0.00% | 0.91% | conditional |
+| NVLINK_PER_ROUND_MS | 0.005 | grounded-empirical | 0.01% | 0.02% | 0.00% | conditional |
+| PCIE_PER_ROUND_MS | 0.015 | grounded-empirical | 0.00% | 0.00% | 0.00% | conditional (no PCIe benchmark) |
+| MEMORY_OVERHEAD_FACTOR | 0.100 | grounded-empirical | 0.00% | 0.00% | 0.00% | structural zero |
+
+**Key findings:**
+- 3 parameters are high-sensitivity: `PREFILL_RESIDUAL` (fitted, dominates TTFT),
+  `BW_EFF_FLOOR` (fitted, dominates TPOT for small models), and `BW_EFF_SCALE`
+  (fitted, shapes the bandwidth efficiency sigmoid transition). All three are
+  fitted parameters — the most impactful inference constants are the least
+  directly measurable.
+- 5 parameters are conditional: zero sensitivity on configs that don't use the
+  feature (TP params zero at TP=1, CB params zero without continuous batching,
+  EP params zero without expert parallelism, PCIe alpha zero on NVLink GPUs).
+- 1 parameter is low-sensitivity: `DECODE_SAMPLING_OVERHEAD_MS` (grounded-empirical,
+  0.03ms fixed overhead per decode step — negligible relative to memory/compute time).
+- 1 parameter is a structural zero: `MEMORY_OVERHEAD_FACTOR` affects memory
+  sizing only, not throughput/TPOT/TTFT.
+
+**Inference physics notes:**
+- `getBandwidthEfficiency()` takes total HBM bytes read per step (weights + KV
+  cache) — bus saturation depends on total streaming volume, not weights alone.
+- `decodeFLOPs()` and `prefillFLOPs()` include attention score FLOPs (QK^T +
+  scores×V) that scale with sequence length. Impact: negligible at typical
+  decode (<4K context), significant at 32K+ prefill (+25% FLOPs).

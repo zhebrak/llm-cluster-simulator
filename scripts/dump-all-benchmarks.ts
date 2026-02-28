@@ -122,20 +122,6 @@ const PRIMARY_HOPPER: BenchmarkEntry[] = [
     },
   },
   {
-    label: 'OLMo 2 32B',
-    gpuCount: 1280, gpuLabel: '1280 H100',
-    strategy: 'FSDP (DP=1280)',
-    configDetails: 'GBS=2048 MBS=1 seq=4096',
-    ac: 'Selective',
-    published: '~38%',
-    source: '[AI2 OLMo 2 blog](https://allenai.org/blog/olmo2-32B)',
-    config: toSimConfig(PUBLISHED.olmo2_32b),
-    useRaw: false,
-    inReadme: true,
-    readmeStrategy: 'FSDP (DP=1280)',
-    readmeSource: '[AI2](https://allenai.org/blog/olmo2-32B)',
-  },
-  {
     label: 'OLMo 3 32B',
     gpuCount: 1024, gpuLabel: '1024 H100',
     strategy: 'FSDP (DP=1024)',
@@ -187,12 +173,9 @@ const PRIMARY_AMPERE: BenchmarkEntry[] = [
     source: '[Narayanan et al. 2021](https://arxiv.org/abs/2104.04473) §5.1',
     config: toSimConfig(PUBLISHED.gpt3_175b),
     useRaw: false,
-    inReadme: true,
-    readmeStrategy: '3D (TP8 PP8)',
-    readmeSource: '[Megatron-LM](https://arxiv.org/abs/2104.04473) §5.1',
     throughputCheck: {
       publishedTFLOPS: '138',
-      notes: '-2%, Megatron-LM',
+      notes: '-5%, Megatron-LM',
     },
   },
   {
@@ -222,7 +205,7 @@ const PRIMARY_AMPERE: BenchmarkEntry[] = [
     useRaw: true,
     throughputCheck: {
       publishedTFLOPS: '150',
-      notes: '8PD convention (includes AC recompute)',
+      notes: 'Megatron-LM, AC recompute in published',
     },
   },
 ];
@@ -232,6 +215,18 @@ const PRIMARY_AMPERE: BenchmarkEntry[] = [
 // ---------------------------------------------------------------------------
 const SECONDARY: BenchmarkEntry[] = [
   {
+    label: 'OLMo 2 32B',
+    gpuCount: 1280, gpuLabel: '1280 H100',
+    strategy: 'FSDP (DP=1280)',
+    configDetails: 'GBS=2048 MBS=1 seq=4096',
+    ac: 'Selective',
+    published: '~38%',
+    source: '',
+    notes: 'Same arch as OLMo 3 (shorter seq); [AI2 OLMo 2 blog](https://allenai.org/blog/olmo2-32B)',
+    config: toSimConfig(PUBLISHED.olmo2_32b),
+    useRaw: false,
+  },
+  {
     label: 'MT-NLG 530B',
     gpuCount: 2240, gpuLabel: '2240 A100',
     strategy: 'ZeRO-1-TP-PP (TP=8 PP=35 DP=8)',
@@ -239,12 +234,12 @@ const SECONDARY: BenchmarkEntry[] = [
     ac: 'Full',
     published: '~40%',
     source: '[Smith et al. 2022](https://arxiv.org/abs/2201.11990)',
-    notes: '8PD convention; largest model anchor',
+    notes: 'Largest model anchor',
     config: toSimConfig(PUBLISHED.mt_nlg_530b),
     useRaw: false,
     throughputCheck: {
       publishedTFLOPS: '126',
-      notes: '8PD convention (includes AC recompute)',
+      notes: 'Megatron-LM, AC recompute in published',
     },
   },
   {

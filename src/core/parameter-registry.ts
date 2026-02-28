@@ -848,6 +848,141 @@ export const PARAMETER_REGISTRY: ParameterEntry[] = [
     owner: 'calibration',
     evidence: 'Sampling kernel profiling on H100; negligible but nonzero overhead',
   },
+  {
+    name: 'NVLINK_PER_ROUND_MS',
+    value: 0.005,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'grounded-empirical',
+    mechanism:
+      'Per-round AllReduce latency on NVLink (5us). Tree AllReduce uses ' +
+      '2*ceil(log2(tp)) rounds. Each round: kernel dispatch, NVLink hop, barrier sync.',
+    affectedBenchmarks: ['inference-tp'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'NCCL small-message benchmarks: TP=2~6us, TP=4~22us, TP=8~35us',
+  },
+  {
+    name: 'PCIE_PER_ROUND_MS',
+    value: 0.015,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'grounded-empirical',
+    mechanism:
+      'Per-round AllReduce latency on PCIe (15us). Higher than NVLink due to ' +
+      'PCIe protocol overhead and lower bandwidth.',
+    affectedBenchmarks: ['inference-tp'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'NCCL small-message benchmarks on PCIe Gen4/Gen5',
+  },
+  {
+    name: 'TP_COMM_EFFICIENCY',
+    value: 0.80,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'grounded-empirical',
+    mechanism:
+      'TP AllReduce bandwidth utilization (80%). Accounts for NCCL protocol framing, ' +
+      'ring/tree coordination, and memory copy overhead during inference AllReduce.',
+    affectedBenchmarks: ['inference-tp'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'NCCL AllReduce profiling on NVLink for inference-sized messages',
+  },
+  {
+    name: 'EP_PREFILL_OVERLAP',
+    value: 0.15,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'fitted',
+    mechanism:
+      'EP all-to-all overlap fraction during prefill. Prefill compute is large enough ' +
+      'to hide ~85% of EP all-to-all communication, leaving 15% exposed.',
+    affectedBenchmarks: ['inference-ep'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'MoE inference profiling with EP; vLLM EP overlap measurements',
+  },
+  {
+    name: 'BW_EFF_FLOOR',
+    value: 0.35,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'fitted',
+    mechanism:
+      'Minimum decode bandwidth efficiency. Small models (kernel launch overhead dominates) ' +
+      'achieve ~35-40% of peak HBM bandwidth. Floor of the sigmoid efficiency model.',
+    affectedBenchmarks: ['inference-latency'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'vLLM/TensorRT-LLM decode bandwidth profiling on small models',
+  },
+  {
+    name: 'BW_EFF_SCALE',
+    value: 5.0,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'fitted',
+    mechanism:
+      'Decode bandwidth efficiency sigmoid transition scale (GB). Controls how quickly ' +
+      'efficiency rises from floor to ceiling as total HBM streaming volume increases.',
+    affectedBenchmarks: ['inference-latency'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'Fitted to BW utilization curve across model sizes (125M to 405B)',
+  },
+  {
+    name: 'CB_SCHEDULING_BASE',
+    value: 0.01,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'grounded-empirical',
+    mechanism:
+      'Continuous batching scheduling overhead base (1% of TPOT). Scales to 2% at batch=128+. ' +
+      'Covers iteration-level scheduling: slot allocation, request admission, KV cache management.',
+    affectedBenchmarks: ['inference-cb'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'vLLM scheduler profiling; iteration-level overhead measurements',
+  },
+  {
+    name: 'CB_PREFILL_INTERFERENCE_MAX',
+    value: 0.10,
+    file: 'src/core/inference/latency.ts',
+    category: 'inference',
+    tier: 'fitted',
+    mechanism:
+      'Maximum CB prefill interference from concurrent decode slots (10%). At batch=1 no ' +
+      'interference; at batch≥32 concurrent decode traffic contends for HBM bandwidth during prefill.',
+    affectedBenchmarks: ['inference-cb'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'CB prefill latency profiling with varying concurrent decode batch sizes',
+  },
+  {
+    name: 'MEMORY_OVERHEAD_FACTOR',
+    value: 0.10,
+    file: 'src/core/inference/memory.ts',
+    category: 'inference',
+    tier: 'grounded-empirical',
+    mechanism:
+      'CUDA/framework memory overhead as fraction of (weights + KV cache). Covers CUDA context, ' +
+      'cuDNN workspace, NCCL buffers, and serving framework overhead (10%).',
+    affectedBenchmarks: ['inference-memory'],
+    introducedIn: 'v13.0',
+    lastValidatedAt: '2026-02-28',
+    owner: 'calibration',
+    evidence: 'vLLM/TensorRT-LLM memory profiling; torch.cuda.memory_stats() analysis',
+  },
 
   // =========================================================================
   // Context Parallel (3d-parallel.ts)

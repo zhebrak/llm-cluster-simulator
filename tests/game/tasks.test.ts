@@ -4,7 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { ALL_TASKS, getTaskById, getTasksForLevel } from '../../src/game/tasks/index.ts';
-import type { GameMode, GameDifficulty } from '../../src/game/types.ts';
+import type { GameMode, GameDifficulty, ExpectedChange } from '../../src/game/types.ts';
+import type { TaskConfigSnapshot } from '../../src/game/validation.ts';
 import { getModel } from '../../src/core/models/registry.ts';
 import { getGPU } from '../../src/core/hardware/gpu.ts';
 import type { SimulationMetrics } from '../../src/core/simulation/engine.ts';
@@ -213,6 +214,71 @@ describe('Game tasks — inference tasks have no strategyType', () => {
   for (const task of inferenceTasks) {
     it(`${task.id} has no strategyType in setup`, () => {
       expect(task.setup.strategyType, 'Inference tasks should not have strategyType').toBeUndefined();
+    });
+  }
+});
+
+// ── ExpectedChanges structural validation ───────────────────────────────
+
+const VALID_SNAPSHOT_FIELDS: Set<string> = new Set<string>([
+  'modelId', 'gpuId', 'numGPUs',
+  'precision', 'activationCheckpointing', 'checkpointingGranularity',
+  'flashAttention', 'globalBatchSize', 'microBatchSize',
+  'sequenceLength', 'sequenceParallel', 'strategyType',
+  'tpDegree', 'ppDegree', 'epDegree', 'cpDegree',
+  'pipelineSchedule', 'interleavedStages', 'finetuningMethod',
+  'loraRank', 'loraTargetModules',
+  'weightPrecision', 'kvCachePrecision', 'batchSize',
+  'inputSeqLen', 'outputSeqLen', 'tensorParallel', 'expertParallel',
+  'pagedAttention', 'continuousBatching', 'speculativeDecoding',
+] satisfies (keyof TaskConfigSnapshot)[]);
+
+const VALID_CHECKS = new Set(['changed', 'unchanged', 'increased', 'decreased', 'enabled', 'disabled']);
+
+const tasksWithExpectedChanges = ALL_TASKS.filter(t => t.expectedChanges && t.expectedChanges.length > 0);
+
+describe('Game tasks — expectedChanges field validity', () => {
+  for (const task of tasksWithExpectedChanges) {
+    for (const change of task.expectedChanges!) {
+      it(`${task.id}: field "${change.field}" is a valid TaskConfigSnapshot key`, () => {
+        expect(VALID_SNAPSHOT_FIELDS.has(change.field),
+          `Unknown field "${change.field}" — must be a key of TaskConfigSnapshot`).toBe(true);
+      });
+
+      it(`${task.id}: check "${change.check}" is a valid check type`, () => {
+        expect(VALID_CHECKS.has(change.check),
+          `Invalid check "${change.check}" — must be one of ${[...VALID_CHECKS].join(', ')}`).toBe(true);
+      });
+    }
+  }
+});
+
+describe('Game tasks — expectedChanges arrays are non-empty when present', () => {
+  for (const task of ALL_TASKS) {
+    if (task.expectedChanges !== undefined) {
+      it(`${task.id}: expectedChanges array is non-empty`, () => {
+        expect(task.expectedChanges!.length).toBeGreaterThan(0);
+      });
+    }
+  }
+});
+
+describe('Game tasks — no contradictory checks on same field', () => {
+  const CONTRADICTIONS: [string, string][] = [
+    ['changed', 'unchanged'],
+    ['increased', 'decreased'],
+    ['enabled', 'disabled'],
+  ];
+
+  for (const task of tasksWithExpectedChanges) {
+    it(`${task.id}: no contradictory checks`, () => {
+      const changes = task.expectedChanges!;
+      for (const [a, b] of CONTRADICTIONS) {
+        const fieldsA = changes.filter(c => c.check === a).map(c => c.field);
+        const fieldsB = changes.filter(c => c.check === b).map(c => c.field);
+        const overlap = fieldsA.filter(f => fieldsB.includes(f));
+        expect(overlap, `Field(s) ${overlap.join(', ')} have contradictory checks: ${a} vs ${b}`).toHaveLength(0);
+      }
     });
   }
 });

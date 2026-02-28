@@ -2077,11 +2077,11 @@ describe('Mistral Large 3', () => {
         tensorParallel: 8,
       });
       expect(result.success).toBe(true);
-      // Pinned TTFT: 11ms (prefill reads nearly all expert weights), TPOT: 1.01ms, ±30%
-      expect(result.latency.ttft).toBeGreaterThan(11.0 * 0.7);
-      expect(result.latency.ttft).toBeLessThan(11.0 * 1.3);
-      expect(result.latency.tpot).toBeGreaterThan(1.01 * 0.7);
-      expect(result.latency.tpot).toBeLessThan(1.01 * 1.3);
+      // Pinned TTFT: 8.8ms (prefill with overlap), TPOT: 3.68ms (tree-round alpha + collective count), ±30%
+      expect(result.latency.ttft).toBeGreaterThan(8.8 * 0.7);
+      expect(result.latency.ttft).toBeLessThan(8.8 * 1.3);
+      expect(result.latency.tpot).toBeGreaterThan(3.68 * 0.7);
+      expect(result.latency.tpot).toBeLessThan(3.68 * 1.3);
     });
   });
 
@@ -2159,11 +2159,11 @@ describe('MiniMax models', () => {
         tensorParallel: 4,
       });
       expect(result.success).toBe(true);
-      // Pinned TTFT: 18ms (prefill reads nearly all expert weights), TPOT: 1.20ms, ±30%
-      expect(result.latency.ttft).toBeGreaterThan(18.0 * 0.7);
-      expect(result.latency.ttft).toBeLessThan(18.0 * 1.3);
-      expect(result.latency.tpot).toBeGreaterThan(1.20 * 0.7);
-      expect(result.latency.tpot).toBeLessThan(1.20 * 1.3);
+      // Pinned TTFT: 17.1ms (prefill with overlap), TPOT: 2.49ms (tree-round alpha + collective count), ±30%
+      expect(result.latency.ttft).toBeGreaterThan(17.1 * 0.7);
+      expect(result.latency.ttft).toBeLessThan(17.1 * 1.3);
+      expect(result.latency.tpot).toBeGreaterThan(2.49 * 0.7);
+      expect(result.latency.tpot).toBeLessThan(2.49 * 1.3);
     });
   });
 
@@ -2249,11 +2249,11 @@ describe('GPT-OSS models', () => {
         weightPrecision: 'bf16',
       });
       expect(result.success).toBe(true);
-      // Pinned TTFT: 10.84ms, TPOT: 3.78ms, ±30%
-      expect(result.latency.ttft).toBeGreaterThan(10.84 * 0.7);
-      expect(result.latency.ttft).toBeLessThan(10.84 * 1.3);
-      expect(result.latency.tpot).toBeGreaterThan(3.78 * 0.7);
-      expect(result.latency.tpot).toBeLessThan(3.78 * 1.3);
+      // Pinned TTFT: 12.48ms (MoE coupon collector saturates at 512 tokens), TPOT: 3.86ms, ±30%
+      expect(result.latency.ttft).toBeGreaterThan(12.48 * 0.7);
+      expect(result.latency.ttft).toBeLessThan(12.48 * 1.3);
+      expect(result.latency.tpot).toBeGreaterThan(3.86 * 0.7);
+      expect(result.latency.tpot).toBeLessThan(3.86 * 1.3);
     });
   });
 

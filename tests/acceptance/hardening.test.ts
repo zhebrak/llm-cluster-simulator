@@ -1721,7 +1721,7 @@ describe('Section 15: Inference Matmul Saturation', () => {
       flashAttention: true, tensorParallel: 1,
     });
     expect(result.success).toBe(true);
-    // Pinned TTFT: 1.21 ms
+    // Pinned TTFT: 1.22 ms (1B model, compute-bound at batch=1 seq=128)
     expect(result.latency.ttft).toBeGreaterThan(0.97);
     expect(result.latency.ttft).toBeLessThan(1.45);
     expect(Number.isFinite(result.latency.ttft)).toBe(true);

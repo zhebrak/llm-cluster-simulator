@@ -45,6 +45,12 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
         label: 'Throughput > 50 tok/s',
       },
     ],
+    expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'DeepSeek V3 has 671B total parameters but only ~37B active per token. All 671B must fit in memory across your GPUs.',
       'With 8 H100s (80GB each), calculate whether FP8 (1 byte/param) fits per GPU at TP=8. If not, try INT4 (0.5 bytes/param) which further halves memory.',
@@ -74,7 +80,7 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'the expert parameters while keeping tensor parallelism for the dense attention layers. ' +
       'The goal is to achieve higher throughput than pure TP alone by reducing per-GPU memory pressure ' +
       'and enabling larger batch sizes.',
-    concept: 'Expert Parallelism for MoE Serving',
+    concept: 'Scaling MoE beyond single-node memory',
     learningObjectives: [
       'Understand EP distributes experts across GPUs instead of replicating all on each',
       'Know EP uses all-to-all communication (different from TP all-reduce)',
@@ -101,9 +107,14 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
         label: 'Throughput > 100 tok/s',
       },
     ],
+    expectedChanges: [
+      { field: 'expertParallel', check: 'increased', label: 'Increased expert parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'Expert Parallelism distributes experts across GPUs. With EP, each GPU holds a fraction of the experts, dramatically reducing per-GPU memory.',
-      'Combine TP and EP: use TP within a node (TP=8 over NVLink) and EP across nodes. This keeps the fast NVLink for dense all-reduce and uses IB for expert routing.',
+      'Combine TP and EP: use TP within a node (TP=8 over NVLink) and EP across nodes. This keeps fast NVLink for dense all-reduce and uses the inter-node fabric for expert routing.',
       'With less memory consumed by expert weights, you can increase batch size to improve throughput. EP trades all-to-all communication for better memory efficiency and higher batch utilization.',
     ],
     successExplanation:
@@ -131,12 +142,13 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'speedup but more wasted draft compute when tokens are rejected.\n\n' +
       'You have LLaMA 3.1 405B on 16 H100 GPUs. Enable speculative decoding, choose a draft model, and ' +
       'tune K to achieve both low latency and good throughput.',
-    concept: 'Speculative Decoding: Draft Selection and K-Tuning',
+    concept: 'Draft-verify optimization and tuning',
     learningObjectives: [
       'Choose appropriate draft model: 10-100x smaller than target, same model family for high acceptance',
       'Understand quality-speed tradeoff: larger drafts accept more but have more overhead',
       'Know E[tokens/step] = (1 - alpha^(K+1)) / (1 - alpha) where alpha = acceptance rate',
       'Understand optimal K depends on the ratio of draft generation time to target verification time',
+      'Know speculative decoding is especially effective for MoE models where all expert weights are loaded but few are used — verification amortizes this bandwidth waste',
     ],
     setup: {
       modelId: 'llama3-405b',
@@ -149,62 +161,86 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       { field: 'latency.tpot', operator: '<', value: 12, label: 'TPOT < 12 ms' },
       { field: 'throughput.tokensPerSecond', operator: '>', value: 80, label: 'Throughput > 80 tok/s' },
     ],
+    expectedChanges: [
+      { field: 'speculativeDecoding', check: 'enabled', label: 'Enabled speculative decoding' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'Select a draft model from the same LLaMA family. The draft-to-target size ratio and K together determine the speedup.',
       'The optimal K depends on the draft-to-verify time ratio and acceptance rate. Tune K alongside the draft model choice.',
     ],
     successExplanation:
-      'The art of speculative decoding lies in two choices: draft model and K. An ideal draft is ' +
+      'The key to speculative decoding lies in two choices: draft model and K. An ideal draft is ' +
       '10-100x smaller than the target while matching its distribution for high acceptance rates. ' +
       'Same-family models work best because they share tokenization and training data.\n\n' +
       'The expected tokens per verification step follows a geometric series: `E[tokens] = (1 - alpha^(K+1)) / (1 - alpha)`. ' +
       'The wall-clock time per step is `K * draft_time + verify_time`. There is an optimal K that balances ' +
       'draft overhead against verification efficiency — too high and draft time dominates, too low and you ' +
-      'lose the speculative advantage. See [Speculative Decoding (Leviathan et al., 2022)](https://arxiv.org/abs/2211.17192) for the original analysis.',
+      'lose the speculative advantage. See [Speculative Decoding (Leviathan et al., 2022)](https://arxiv.org/abs/2211.17192) for the original analysis.\n\n' +
+      'Speculative decoding is especially powerful for MoE models like DeepSeek V3. During standard decode, ' +
+      'the GPU loads all expert weights from memory but only a fraction contribute to the output token. ' +
+      'Speculative decoding amortizes this bandwidth waste across all verified tokens in a single forward pass — ' +
+      'each accepted token gets a "free ride" on the expert weight loading.',
   },
 
-  // Task 4: When More TP Hurts
+  // Task 4: Optimizing Time to First Token
   {
     id: 'inference-advanced-04',
     mode: 'inference',
     difficulty: 'advanced',
     order: 3,
-    title: 'When More TP Hurts',
+    title: 'Optimizing Time to First Token',
     briefing:
-      'You have Qwen 3 14B on 8 H100 GPUs with TP=8. Each GPU holds only 1/8 of the model weights — ' +
-      'about 3.5 GB. The AllReduce communication after every layer dominates the decode step time because ' +
-      'the per-GPU weight reads are tiny. Throughput is far below what 8 GPUs should deliver.\n\n' +
-      'When a model fits on fewer GPUs, using maximum TP wastes GPUs on communication overhead. ' +
-      'Find a configuration that achieves over 675 tokens per second.',
-    concept: 'TP vs Replicas for Throughput',
+      'You\'ve configured LLaMA 3.3 70B on 8 H100 GPUs with TP=2 and 4 replicas — a setup optimized ' +
+      'for aggregate decode throughput. But this deployment serves a document analysis workload: users ' +
+      'submit 32K-token documents and need a fast initial response.\n\n' +
+      'With TP=2, each replica processes the entire 32K-token prefill using only 2 GPUs. Run the ' +
+      'config and check the {{ttft|TTFT}} — for long-input workloads, the prefill phase dominates ' +
+      'total latency. Think about what hardware resource limits prefill speed, and how to apply more ' +
+      'of it.',
+    concept: 'Prefill-Decode Hardware Asymmetry',
     learningObjectives: [
-      'Understand that over-sharding with TP makes AllReduce overhead dominate decode time',
-      'Know that replicas provide linear throughput scaling with zero communication overhead',
-      'Distinguish latency-oriented (max TP) from throughput-oriented (min TP, max replicas) serving',
+      'Understand that prefill is compute-bound: TTFT scales with model_FLOPs × input_tokens / (TFLOPS × TP)',
+      'Know that increasing TP divides prefill compute across GPUs, reducing TTFT nearly linearly',
+      'Recognize that TTFT optimization (max TP) conflicts with throughput optimization (min TP, max replicas)',
     ],
     setup: {
-      modelId: 'qwen3-14b',
+      modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
       numGPUs: 8,
       gpusPerNode: 8,
-      tensorParallel: 8,
+      tensorParallel: 2,
+      inputSeqLen: 32768,
+      outputSeqLen: 128,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference succeeds' },
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 675, label: 'Throughput > 675 tok/s' },
+      { field: 'latency.ttft', operator: '<', value: 2500, label: 'TTFT < 2500 ms' },
+    ],
+    expectedChanges: [
+      { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'Qwen 3 14B in BF16 is about 28 GB — it fits on a single 80 GB GPU. Why use all 8 GPUs for one instance?',
-      'Reduce TP to create multiple independent replicas. Total throughput = per_replica_throughput × num_replicas.',
+      'Run the initial config and check TTFT in the dashboard. Prefill processes all 32K input tokens through every layer — a massive compute task. With only 2 GPUs computing in parallel, most of the fleet sits idle during prefill.',
+      'Prefill is compute-bound: dominated by matrix multiplications through every layer. Unlike decode (which reads weights once per token), prefill multiplies weights by thousands of input tokens simultaneously. More TP means more GPUs share this compute.',
     ],
     successExplanation:
-      'When a model fits on fewer GPUs than available, using maximum TP is counterproductive. ' +
-      'TP=8 means each GPU holds only 3.5 GB of weights but must still perform AllReduce communication ' +
-      'at every layer — the overhead dominates the tiny per-GPU computation.\n\n' +
-      'With TP=1 and 8 replicas, each GPU independently serves requests with zero communication overhead. ' +
-      'Total throughput scales linearly with replica count. This is the fundamental distinction between ' +
-      'latency-oriented serving (max TP to minimize per-request TPOT) and throughput-oriented serving ' +
-      '(min TP, max replicas to maximize aggregate tokens/sec).',
+      'Prefill (processing the prompt) and decode (generating tokens) have fundamentally different ' +
+      'hardware bottlenecks. Decode reads all model weights from HBM for each output token — it\'s ' +
+      'memory-bandwidth-bound, so bandwidth determines speed. But prefill processes thousands of tokens ' +
+      'simultaneously through massive matrix multiplications, making it compute-bound — TFLOPS determines ' +
+      'speed.\n\n' +
+      'For this 32K-token document, prefill requires approximately `2 × activeParams × inputTokens` FLOPs ' +
+      'for linear projections alone, plus quadratic attention FLOPs. Increasing TP divides this compute ' +
+      'across more GPUs, reducing TTFT nearly linearly.\n\n' +
+      'This creates a fundamental tension in serving configuration: throughput-optimized setups (as in earlier ' +
+      'tasks) use minimal TP with many replicas for aggregate tokens/sec. TTFT-optimized setups use maximum ' +
+      'TP to minimize per-request prefill latency. Production systems choose based on workload — chatbots ' +
+      'with short inputs optimize for decode throughput, while RAG and document analysis with long inputs ' +
+      'optimize for TTFT.',
   },
 
   // Task 5: Multi-Replica Serving
@@ -218,10 +254,10 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'LLaMA 3.3 70B on 8 H100 GPUs with TP=4. At BF16, each GPU holds ~35 GB of weights — it fits, ' +
       'but all 8 GPUs are dedicated to a single instance. With TP=4, 4 GPUs are used per replica and ' +
       'the other 4 sit idle. But reducing TP below 4 at BF16 would not fit the 140 GB model.\n\n' +
-      'The trick: FP8 weight quantization halves weight memory to ~70 GB total, making TP=2 feasible ' +
+      'The key insight: FP8 weight quantization halves weight memory to ~70 GB total, making TP=2 feasible ' +
       '(35 GB per GPU). With TP=2, you can run 4 replicas instead of 2 — doubling aggregate throughput.\n\n' +
       'Configure TP and weight precision to maximize total throughput above 250 tok/s.',
-    concept: 'Multi-Replica Inference with Quantization',
+    concept: 'Throughput scaling via instance replication',
     learningObjectives: [
       'Know replicas provide linear throughput scaling with no communication overhead',
       'Understand FP8 quantization enables lower TP, which enables more replicas',
@@ -249,14 +285,19 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
         label: 'Throughput > 250 tok/s',
       },
     ],
+    expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
       'At BF16 with TP=4, the model fits but you only have 2 replicas. Quantization can reduce weight memory enough to lower TP.',
       'Lower TP means more replicas. Explore weight precision options that halve memory, enabling a smaller TP degree.',
     ],
     successExplanation:
       'Multi-replica serving is the throughput-optimal strategy when you have more GPUs than a single ' +
-      'model instance needs. FP8 quantization halves weight memory, enabling TP=2 instead of TP=4 — ' +
-      'which doubles the replica count from 2 to 4.\n\n' +
+      'model instance needs. Quantization reduces weight memory, enabling lower TP and thus more replicas ' +
+      'from the same GPU budget.\n\n' +
       'For throughput-oriented serving (high QPS, less concerned about individual latency), minimizing TP ' +
       'and maximizing replicas is almost always better. Production serving systems like vLLM and TensorRT-LLM ' +
       'automatically manage multi-replica deployments.',
@@ -274,8 +315,10 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'The cost per million tokens is determined by: (GPU_hourly_rate * num_GPUs) / tokens_per_second * 1e6 / 3600. ' +
       'Every optimization that increases throughput directly reduces cost. But there is a subtlety: ' +
       'using fewer GPUs reduces the numerator, and sometimes a smaller but well-optimized configuration ' +
-      'beats a larger one on cost even if absolute throughput is lower. ' +
-      'Minimize the cost of serving LLaMA 3.3 70B on 8 A100-80GB GPUs. The A100 does not support FP8, so INT8 is the best quantization option. How does GPU choice affect cost efficiency?',
+      'beats a larger one on cost even if absolute throughput is lower.\n\n' +
+      'You have 8 {{l40s|L40S}} GPUs — significantly cheaper per hour than A100s or H100s. ' +
+      'Each L40S has 48 GB of memory with PCIe connectivity. The L40S supports FP8 (Ada architecture). ' +
+      'Minimize the cost of serving LLaMA 3.3 70B.',
     concept: 'Cost-Efficient Inference Optimization',
     learningObjectives: [
       'Know cost formula: (GPU_hourly_rate x numGPUs / 3600) / tokens_per_sec x 1e6',
@@ -284,7 +327,7 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
     ],
     setup: {
       modelId: 'llama3.3-70b',
-      gpuId: 'a100-80gb',
+      gpuId: 'l40s',
       numGPUs: 8,
       gpusPerNode: 8,
     },
@@ -302,21 +345,26 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
         label: 'Cost < $5.00/M tokens',
       },
     ],
+    expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+    ],
     hints: [
-      'Cost = (rate × numGPUs / 3600) / tokensPerSecond × 1e6. Check the GPU hourly rate in the sidebar — cheaper GPUs have less bandwidth but lower cost.',
-      'Multi-replica serving is key: TP=2 with 4 replicas gives you 4x the throughput of a single instance. Combined with quantization, this dramatically improves cost efficiency.',
-      'Enable INT8 quantization (A100 does not support FP8), use continuous batching if available, and consider paged attention to maximize the batch size each replica can handle. Every token/second you gain directly reduces $/M tokens. The Pareto frontier shows the cost-latency frontier — points on the frontier are non-dominated.',
+      'Cost = (rate × numGPUs / 3600) / tokensPerSecond × 1e6. Check the GPU hourly rates in the sidebar — the L40S is significantly cheaper than the H100. Lower hourly cost means even moderate throughput can achieve good cost efficiency.',
+      'INT4 quantization dramatically reduces weight memory. Calculate whether it enables a lower TP degree — and thus more replicas — on 48 GB GPUs. More replicas means linear throughput scaling.',
+      'FP8 is available on the L40S (Ada architecture). INT4 enables TP=2 → 4 replicas. Combined with batching and paged attention, this maximizes throughput per dollar. The PCIe interconnect constrains TP — prefer fewer TP ranks with more replicas.',
     ],
     successExplanation:
-      'Cost-per-token optimization is a holistic challenge that combines all inference techniques.' +
-      ' Different GPUs have different price-performance ratios: the A100 is cheaper per hour but has less bandwidth, ' +
-      'while the H100 costs more but delivers higher throughput.' +
-      ' The key techniques are: ' +
-      'quantization (more throughput per GPU), multi-replica serving (linear throughput scaling), ' +
-      'batching (amortize memory bandwidth across requests), and paged attention (efficient memory utilization ' +
-      'for larger batches).\n\nIn practice, the biggest lever is usually throughput: doubling throughput halves ' +
-      'cost. This is why aggressive quantization (FP8, INT4) is so popular in production — the small quality ' +
-      'loss is worth the 2-4x cost reduction.',
+      'Cost-per-token optimization is a holistic challenge that combines all inference techniques. ' +
+      'Cheaper GPUs can offer compelling price-performance ratios: with a lower hourly rate, ' +
+      'even moderate throughput can achieve excellent cost efficiency.\n\n' +
+      'The key techniques are: quantization (enabling lower TP per replica), ' +
+      'multi-replica serving (linear throughput scaling), ' +
+      'batching (amortize bandwidth across requests), and paged attention (efficient memory for larger batches). ' +
+      'On GPUs with PCIe interconnect rather than high-bandwidth links, lower TP degrees with more replicas ' +
+      'tend to be more cost-effective — each TP AllReduce over PCIe is relatively slow, so minimizing TP ' +
+      'while maximizing replica count is the cost-optimal strategy.',
   },
 
   // Task 7: Long Context Inference
@@ -354,6 +402,11 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
         label: 'Model fits in memory',
       },
     ],
+    expectedChanges: [
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+    ],
     hints: [
       'At 128K sequence length, the KV cache for a 405B model is enormous — even with {{gqa|GQA}} reducing KV heads. KV cache quantization (FP8 or INT8) halves KV cache memory. Enable it alongside weight quantization.',
       'Paged attention avoids internal fragmentation in KV cache allocation — instead of reserving max_seq_len per request, it allocates pages on demand. This is critical at long context lengths where reserved-but-unused memory wastes capacity.',
@@ -368,105 +421,119 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'compute and memory.',
   },
 
-  // Task 8: Speculative Decoding for MoE
+  // Task 8: Latency SLA Optimization
   {
     id: 'inference-advanced-08',
     mode: 'inference',
     difficulty: 'advanced',
     order: 7,
-    title: 'Speculative Decoding for MoE',
-    briefing:
-      'Speculative decoding is especially interesting for MoE models. During standard autoregressive decoding, ' +
-      'an MoE model activates only a fraction of its experts per token, making it memory-bandwidth-bound ' +
-      '(all expert weights must be loaded but few are used). Speculative decoding can help by verifying ' +
-      'multiple tokens in a single forward pass, amortizing the weight-loading cost across more useful tokens. ' +
-      'Configure DeepSeek V3 (671B total, ~37B active) on 8 H100 GPUs. ' +
-      'The 671B parameters require aggressive quantization to fit — even FP8 (84 GB/GPU ' +
-      'with TP=8) barely exceeds 80 GB. INT4 quantization brings it to ~42 GB/GPU, ' +
-      'leaving room for KV cache and a small draft model.',
-    concept: 'Speculative Decoding with MoE Target Models',
+    title: 'Latency SLA Optimization',
+    concept: 'Multi-constraint serving for production SLAs',
     learningObjectives: [
-      'Understand MoE amplifies spec decoding benefit: all expert weights loaded but few used per token',
-      'Know verification amortizes weight-loading cost across all accepted tokens in one pass',
-      'Combine INT4 + TP + spec decoding for practical MoE serving on single node',
+      'Understand TTFT depends on prefill compute (input length × model FLOPs) while TPOT depends on weight bandwidth',
+      'Know batch size creates tension: larger batch improves throughput but increases TPOT',
+      'Identify weight quantization as a lever that improves all three metrics simultaneously',
+      'Recognize production serving requires satisfying multiple SLA dimensions at once',
     ],
+    briefing:
+      'Production chatbot serving requires meeting multiple SLA constraints simultaneously. ' +
+      'Users expect a fast first response ({{ttft|TTFT}} under 500 ms), smooth token streaming ' +
+      '({{tpot|TPOT}} under 15 ms), and the system must handle high request volume ' +
+      '(throughput over 200 tokens per second).\n\n' +
+      'You have LLaMA 3.3 70B on 8 H100 GPUs with TP=8. The current config uses a large batch ' +
+      'and moderately long input sequences. Run it and observe: the batch size pushes TPOT above the SLA, ' +
+      'while the prefill compute makes TTFT sluggish. Find the configuration that satisfies all ' +
+      'three constraints at once.',
     setup: {
-      modelId: 'deepseek-v3',
+      modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
       numGPUs: 8,
       gpusPerNode: 8,
+      tensorParallel: 8,
+      batchSize: 64,
+      inputSeqLen: 4096,
     },
     winningCriteria: [
-      { field: 'success', operator: '==', value: true, label: 'Model fits in memory' },
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 50, label: 'Throughput > 50 tok/s' },
+      { field: 'success', operator: '==', value: true, label: 'Inference succeeds' },
+      { field: 'latency.ttft', operator: '<', value: 500, label: 'TTFT < 500 ms' },
+      { field: 'latency.tpot', operator: '<', value: 15, label: 'TPOT < 15 ms' },
+      { field: 'throughput.tokensPerSecond', operator: '>', value: 200, label: 'Throughput > 200 tok/s' },
+    ],
+    expectedChanges: [
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'MoE models are strongly memory-bandwidth-bound during decode because all 671B parameters must be loaded but only ~37B are used. Speculative decoding helps by producing multiple tokens per weight-loading cycle.',
-      'With 671B parameters and TP=8, check whether FP8 fits per GPU. If not, you need more aggressive quantization to leave room for KV cache and the draft model.',
-      'Use TP=8 to shard across all GPUs, and INT4 weight precision. The draft model is small enough to stay in BF16 alongside the quantized target model.',
+      'Run the initial config and check TTFT, TPOT, and throughput in the dashboard. With batch=64 at 4K input, both latency metrics exceed their targets. The three constraints pull in different directions.',
+      'Batch size is the primary lever. Lower batch reduces TPOT but also reduces throughput. Weight quantization (FP8) improves all three metrics: faster weight reads reduce TPOT, faster prefill reduces TTFT, and higher per-step efficiency boosts throughput.',
+      'Use FP8 weight precision and find the batch size sweet spot. The Batch chart shows how TPOT and throughput change with batch size — look for the region where both constraints are met simultaneously.',
     ],
     successExplanation:
-      'Speculative decoding is particularly effective for MoE models because of the memory-bandwidth ' +
-      'bottleneck. In standard decoding, an MoE model must load all expert weights from HBM each step ' +
-      'even though only a small fraction contribute to the output. Each verified token in speculative ' +
-      'decoding essentially gets a "free ride" on that weight-loading pass.\n\nThe verification step processes ' +
-      '`K+1` positions in a single forward pass — the attention cost grows with K, but the expert weight ' +
-      'loading cost stays constant. This makes the effective memory-bandwidth utilization much higher.',
+      'Production LLM serving is a multi-constraint optimization problem. TTFT is compute-bound ' +
+      '(proportional to input length and model FLOPs), TPOT is bandwidth-bound (proportional to ' +
+      'weight bytes read per step), and throughput depends on batch utilization.\n\n' +
+      'The key insight: these constraints interact through batch size. Higher batch amortizes weight ' +
+      'reads across more tokens (higher throughput) but each decode step takes longer (higher TPOT). ' +
+      'Weight quantization is the "free lunch" that improves all three: fewer bytes to read means ' +
+      'faster decode (lower TPOT), faster prefill (lower TTFT), and higher effective throughput.\n\n' +
+      'Real serving systems like vLLM, TensorRT-LLM, and SGLang continuously balance these tradeoffs ' +
+      'with dynamic batching, request scheduling, and SLA-aware admission control.',
   },
 
-  // Task 9: Consumer GPU Inference
+  // Task 9: Running MoE on Consumer Hardware
   {
     id: 'inference-advanced-09',
     mode: 'inference',
     difficulty: 'advanced',
     order: 8,
-    title: 'Consumer GPU Inference',
-    briefing:
-      'Not every deployment has access to expensive H100s. The NVIDIA {{l40s|L40S}} is a data center GPU with 48GB ' +
-      'of memory and {{pcie|PCIe}} connectivity (no NVLink). Serving LLaMA 3.3 70B on 4 L40S GPUs requires aggressive ' +
-      'quantization and careful tensor parallelism configuration. The lack of NVLink means TP communication ' +
-      'goes over PCIe at ~31.5 GB/s per GPU — roughly 10x slower than NVLink. This makes the TP overhead ' +
-      'more significant and favors lower TP degrees or heavier quantization to reduce communication volume. ' +
-      'Fit LLaMA 3.3 70B on 4 L40S GPUs and achieve a working deployment.',
-    concept: 'Budget GPU Inference with PCIe Interconnect',
+    title: 'Running MoE on Consumer Hardware',
+    concept: 'Sparse model memory on consumer GPUs',
     learningObjectives: [
-      'Understand PCIe (~31.5 GB/s) vs NVLink (~900 GB/s) impact: ~28x slower TP communication',
-      'Know aggressive quantization (INT4/INT8) compensates for less memory and bandwidth',
-      'Deploy 70B on 4x 48GB L40S GPUs — a practical budget serving configuration',
+      'Understand MoE models require memory for ALL experts but compute only uses active subset',
+      'Know 47B total params at BF16 (94 GB) requires TP=4 across 4x 24GB consumer GPUs',
+      'Understand PCIe TP is slower than NVLink but viable for small TP degrees',
+      'Recognize MoE throughput advantages: fewer active FLOPs per token means faster generation',
     ],
+    briefing:
+      'Mixtral 8x7B is the most popular {{moe|MoE}} model for local inference. It has 47B total ' +
+      'parameters but only activates ~13B per token (top-2 of 8 experts). All 47B parameters ' +
+      'must reside in GPU memory because routing is input-dependent — any expert might be selected.\n\n' +
+      'You have 4 {{rtx-4090|RTX 4090}} GPUs with 24 GB each (96 GB total). At BF16, Mixtral needs ' +
+      '~94 GB for weights alone — it barely fits even with TP=4, and leaves almost no room for ' +
+      'KV cache. Quantization is essential to get comfortable memory headroom.\n\n' +
+      'Your goal: get Mixtral running with good throughput. Think about how MoE memory ' +
+      'differs from a dense model of the same active size.',
     setup: {
-      modelId: 'llama3.3-70b',
-      gpuId: 'l40s',
+      modelId: 'mixtral-8x7b',
+      gpuId: 'rtx-4090',
       numGPUs: 4,
       gpusPerNode: 4,
     },
     winningCriteria: [
-      {
-        field: 'success',
-        operator: '==',
-        value: true,
-        label: 'Model fits in memory',
-      },
-      {
-        field: 'memoryUtilization',
-        operator: '<',
-        value: 1.0,
-        label: 'Memory utilization < 100%',
-      },
+      { field: 'success', operator: '==', value: true, label: 'Model fits in memory' },
+      { field: 'throughput.tokensPerSecond', operator: '>', value: 40, label: 'Throughput > 40 tok/s' },
+    ],
+    expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
+      { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'LLaMA 70B in BF16 needs roughly 2 bytes per parameter — calculate whether 4 L40S GPUs (48GB each) can hold it with TP=4. You will likely need quantization.',
-      'INT4 quantization cuts weight memory dramatically, leaving room for KV cache and activations. The quality trade-off is moderate — INT4 is widely used in production for 70B-class models.',
-      'L40S has no NVLink, so TP communication uses PCIe (~31.5 GB/s). TP=4 over PCIe will have noticeable overhead but is still functional. Minimize communication by using aggressive quantization.',
+      'At BF16 (2 bytes/param), Mixtral\'s 47B total parameters far exceed what 4 × 24 GB GPUs can hold even with TP=4. You need to quantize the weights to free memory for KV cache and operating headroom.',
+      'INT8 (1 byte/param) roughly halves weight memory, making TP=4 across 24 GB GPUs comfortable. INT4 (0.5 bytes/param) gives even more headroom. Calculate the per-GPU weight size yourself: total params × bytes per param ÷ TP. The {{pcie|PCIe}} interconnect makes TP=4 slower than NVLink — choose the quantization that leaves room for batch size.',
+      'Despite having 47B total parameters, Mixtral computes with only ~13B active per token — so each decode step does fewer FLOPs than a 47B dense model. The bandwidth bottleneck is the total weight loading (all experts), but the compute is efficient.',
     ],
     successExplanation:
-      'Serving large models on budget GPUs is a practical reality for many organizations. The key ' +
-      'differences from premium GPUs are: (1) less memory per GPU (48GB vs 80GB), requiring more aggressive ' +
-      'quantization; (2) PCIe instead of NVLink for TP communication, adding ~5-10x more communication ' +
-      'latency per all-reduce; (3) lower memory bandwidth, making decode even more bandwidth-bound.\n\n' +
-      'Aggressive quantization (INT4/INT8) is essential — it simultaneously reduces memory footprint, ' +
-      'communication volume, and memory bandwidth demand. The quality-efficiency trade-off is usually ' +
-      'acceptable for production workloads.',
+      'MoE models on consumer hardware highlight the memory-compute decoupling. Mixtral\'s 47B ' +
+      'parameters all reside in GPU memory, but the router only activates 2 of 8 experts per ' +
+      'token (~13B active). Memory is sized by total params (47B), requiring quantization on ' +
+      '24 GB GPUs. Compute scales with active params (~13B), giving competitive generation speed. ' +
+      'Bandwidth-wise, all expert weights are loaded each decode step even though most go unused.\n\n' +
+      'Despite the bandwidth overhead, Mixtral on 4 RTX 4090 GPUs with INT4/INT8 quantization is one ' +
+      'of the most popular local inference setups. The PCIe interconnect adds TP overhead compared ' +
+      'to NVLink, but for TP=4 the impact is manageable. Tools like llama.cpp, Ollama, and vLLM ' +
+      'make this configuration accessible to anyone with a multi-GPU desktop.',
   },
 
   // Task 10: The Full Serving Stack
@@ -509,6 +576,10 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
         value: 100,
         label: 'Throughput > 100 tok/s',
       },
+    ],
+    expectedChanges: [
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
       'LLaMA 405B needs aggressive quantization to fit. Calculate per-GPU weight memory at FP8 with TP=8 on one node — check if it fits in 80GB with room for KV cache. Cross-node TP (TP=16) is another option but adds IB communication overhead.',

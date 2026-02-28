@@ -360,26 +360,31 @@ describe('Section 3: All training strategies FA on/off', () => {
         expect(metricsFA.memoryPerGPU.optimizerStates).toBe(metricsNoFA.memoryPerGPU.optimizerStates);
       });
 
-      it('MFU identical (±0.001)', () => {
+      it('MFU: FA >= noFA (FA eliminates attention HBM traffic)', () => {
         ensureMetrics();
-        expect(Math.abs(metricsFA.mfu - metricsNoFA.mfu)).toBeLessThan(0.001);
+        expect(metricsFA.mfu).toBeGreaterThanOrEqual(metricsNoFA.mfu);
       });
 
-      it('HFU identical (±0.001)', () => {
+      it('HFU: FA >= noFA', () => {
         ensureMetrics();
-        expect(Math.abs(metricsFA.hfu - metricsNoFA.hfu)).toBeLessThan(0.001);
+        expect(metricsFA.hfu).toBeGreaterThanOrEqual(metricsNoFA.hfu);
       });
 
-      it('step time identical (±0.1%)', () => {
+      it('step time: FA <= noFA (FA is faster or equal)', () => {
         ensureMetrics();
-        const relDiff = Math.abs(metricsFA.stepTimeMs - metricsNoFA.stepTimeMs) / metricsNoFA.stepTimeMs;
-        expect(relDiff).toBeLessThan(0.001);
+        expect(metricsFA.stepTimeMs).toBeLessThanOrEqual(metricsNoFA.stepTimeMs);
       });
 
-      it('tokens/sec identical (±0.1%)', () => {
+      it('tokens/sec: FA >= noFA', () => {
         ensureMetrics();
-        const relDiff = Math.abs(metricsFA.tokensPerSecond - metricsNoFA.tokensPerSecond) / metricsNoFA.tokensPerSecond;
-        expect(relDiff).toBeLessThan(0.001);
+        expect(metricsFA.tokensPerSecond).toBeGreaterThanOrEqual(metricsNoFA.tokensPerSecond);
+      });
+
+      it('FA speedup is reasonable (1.0x to 3.0x)', () => {
+        ensureMetrics();
+        const speedup = metricsNoFA.stepTimeMs / metricsFA.stepTimeMs;
+        expect(speedup).toBeGreaterThanOrEqual(1.0);
+        expect(speedup).toBeLessThan(3.0);
       });
     });
   }
@@ -458,11 +463,11 @@ describe('Section 4: FA + activation checkpointing interaction', () => {
       expect(mC.memoryPerGPU.peakActivations).toBeGreaterThan(mD.memoryPerGPU.peakActivations);
     });
 
-    it('MFU invariant to FA (±0.001)', () => {
+    it('MFU: FA >= noFA (FA eliminates attention HBM traffic)', () => {
       // Use checkpointing=true for both to ensure they fit in memory
       const withFA = getValidatedSimulationMetrics({ ...baseConfig, flashAttention: true, activationCheckpointing: true });
       const noFA = getValidatedSimulationMetrics({ ...baseConfig, flashAttention: false, activationCheckpointing: true });
-      expect(Math.abs(withFA.mfu - noFA.mfu)).toBeLessThan(0.001);
+      expect(withFA.mfu).toBeGreaterThanOrEqual(noFA.mfu);
     });
   });
 });
@@ -612,8 +617,8 @@ describe('Section 6: Inference recommendation edge cases', () => {
 
 // ─── Section 7: MFU/Throughput Invariance ───────────────────────────────────
 
-describe('Section 7: MFU/throughput invariance', () => {
-  it('LLaMA-3 8B FSDP on 8x H100: MFU invariant to FA', () => {
+describe('Section 7: FA timing impact', () => {
+  it('LLaMA-3 8B FSDP on 8x H100: FA=true is faster at seq=4096', () => {
     // Use mbs=1 to avoid OOM with noFA — the 2.5× attention coefficient
     // (Korthikanti et al. 2022) makes seq=4096 mbs=4 noFA exceed 80GB.
     const base: Omit<SimulationConfig, 'flashAttention'> = {
@@ -629,13 +634,14 @@ describe('Section 7: MFU/throughput invariance', () => {
     const withFA = getValidatedSimulationMetrics({ ...base, flashAttention: true });
     const noFA = getValidatedSimulationMetrics({ ...base, flashAttention: false });
 
-    expect(Math.abs(withFA.mfu - noFA.mfu)).toBeLessThan(0.001);
-    expect(Math.abs(withFA.hfu - noFA.hfu)).toBeLessThan(0.001);
-    const stepTimeDiff = Math.abs(withFA.stepTimeMs - noFA.stepTimeMs) / noFA.stepTimeMs;
-    expect(stepTimeDiff).toBeLessThan(0.001);
+    expect(withFA.mfu).toBeGreaterThan(noFA.mfu);
+    expect(withFA.stepTimeMs).toBeLessThan(noFA.stepTimeMs);
+    const speedup = noFA.stepTimeMs / withFA.stepTimeMs;
+    expect(speedup).toBeGreaterThanOrEqual(1.01); // at least 1% faster
+    expect(speedup).toBeLessThan(3.0); // sanity cap
   });
 
-  it('LLaMA-3 8B 3D-parallel on 8x H100: MFU invariant to FA', () => {
+  it('LLaMA-3 8B 3D-parallel on 8x H100: FA=true is faster', () => {
     const base: Omit<SimulationConfig, 'flashAttention'> = {
       modelId: 'llama3-8b',
       clusterConfig: createMultiNodeCluster('h100-sxm', 8, 1)!,
@@ -650,10 +656,77 @@ describe('Section 7: MFU/throughput invariance', () => {
     const withFA = getValidatedSimulationMetrics({ ...base, flashAttention: true });
     const noFA = getValidatedSimulationMetrics({ ...base, flashAttention: false });
 
-    expect(Math.abs(withFA.mfu - noFA.mfu)).toBeLessThan(0.001);
-    expect(Math.abs(withFA.hfu - noFA.hfu)).toBeLessThan(0.001);
-    const stepTimeDiff = Math.abs(withFA.stepTimeMs - noFA.stepTimeMs) / noFA.stepTimeMs;
-    expect(stepTimeDiff).toBeLessThan(0.001);
+    expect(withFA.mfu).toBeGreaterThan(noFA.mfu);
+    expect(withFA.stepTimeMs).toBeLessThan(noFA.stepTimeMs);
+    const speedup = noFA.stepTimeMs / withFA.stepTimeMs;
+    expect(speedup).toBeGreaterThanOrEqual(1.0);
+    expect(speedup).toBeLessThan(3.0);
+  });
+
+  it('FA speedup scales with seq² (2048 → 4096 → 8192)', () => {
+    // Use 1B model to ensure FA=false fits in memory even at 8192
+    const seqLengths = [2048, 4096, 8192];
+    const speedups: number[] = [];
+
+    for (const seq of seqLengths) {
+      const base: Omit<SimulationConfig, 'flashAttention'> = {
+        modelId: 'llama3.2-1b',
+        clusterConfig: createMultiNodeCluster('h100-sxm', 8, 1)!,
+        globalBatchSize: 8,
+        microBatchSize: 1,
+        sequenceLength: seq,
+        strategyType: 'fsdp',
+        activationCheckpointing: true,
+      };
+
+      const withFA = getValidatedSimulationMetrics({ ...base, flashAttention: true });
+      const noFA = getValidatedSimulationMetrics({ ...base, flashAttention: false });
+      speedups.push(noFA.stepTimeMs / withFA.stepTimeMs);
+    }
+
+    // Each doubling of seq should increase speedup (attention HBM grows as seq²)
+    for (let i = 1; i < speedups.length; i++) {
+      expect(speedups[i]).toBeGreaterThan(speedups[i - 1]);
+    }
+  });
+
+  it('FA speedup small for large models at short seq (175B at 2048)', () => {
+    const base: Omit<SimulationConfig, 'flashAttention'> = {
+      modelId: 'gpt3-175b',
+      clusterConfig: createMultiNodeCluster('h100-sxm', 8, 16)!,
+      globalBatchSize: 128,
+      microBatchSize: 1,
+      sequenceLength: 2048,
+      strategyType: 'fsdp-tp-pp',
+      strategyConfig: { tp: 8, pp: 8, sequenceParallel: true },
+      activationCheckpointing: true,
+    };
+
+    const withFA = getValidatedSimulationMetrics({ ...base, flashAttention: true });
+    const noFA = getValidatedSimulationMetrics({ ...base, flashAttention: false });
+
+    // Large model at short seq: attention HBM is small relative to matmul compute
+    const speedup = noFA.stepTimeMs / withFA.stepTimeMs;
+    expect(speedup).toBeLessThan(1.10); // less than 10% speedup
+  });
+
+  it('FA speedup significant for small models at long seq (1B at 8192)', () => {
+    const base: Omit<SimulationConfig, 'flashAttention'> = {
+      modelId: 'llama3.2-1b',
+      clusterConfig: createMultiNodeCluster('h100-sxm', 8, 1)!,
+      globalBatchSize: 8,
+      microBatchSize: 1,
+      sequenceLength: 8192,
+      strategyType: 'fsdp',
+      activationCheckpointing: true,
+    };
+
+    const withFA = getValidatedSimulationMetrics({ ...base, flashAttention: true });
+    const noFA = getValidatedSimulationMetrics({ ...base, flashAttention: false });
+
+    // Small model at long seq: attention HBM dominates
+    const speedup = noFA.stepTimeMs / withFA.stepTimeMs;
+    expect(speedup).toBeGreaterThan(1.15); // at least 15% speedup
   });
 });
 

@@ -10,12 +10,22 @@ interface WelcomeModalProps {
 export function WelcomeModal({ onDismiss }: WelcomeModalProps) {
   const handleSimulator = () => {
     localStorage.setItem(WELCOMED_KEY, '1');
+    const game = useGameStore.getState();
+    if (game.active) {
+      game.exit();  // restores config, deactivates, reloads page
+      return;       // reload happens — onDismiss unnecessary
+    }
     onDismiss();
   };
 
   const handleLearn = () => {
     localStorage.setItem(WELCOMED_KEY, '1');
-    useGameStore.getState().enter();
+    const game = useGameStore.getState();
+    if (game.active) {
+      game.resetToLevelPicker();
+    } else {
+      game.enter();
+    }
     onDismiss();
   };
 
@@ -55,7 +65,7 @@ export function WelcomeModal({ onDismiss }: WelcomeModalProps) {
             </div>
             <span className="text-base font-medium text-white">Learn</span>
             <span className="text-sm text-gray-400 text-center">
-              Learn distributed training interactively
+              Learn distributed training & inference interactively
             </span>
           </button>
         </div>

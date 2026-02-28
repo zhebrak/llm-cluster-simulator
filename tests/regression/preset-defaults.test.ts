@@ -128,7 +128,7 @@ const TRAINING_PRESETS: TrainingPresetCase[] = [
       flashAttention: false,
       mixedPrecision: 'bf16',
     },
-    pinned: { mfu: 0.4324, hfu: 0.5765, memUtil: 0.9128, tokPerSec: 131417, stepTimeMs: 23937 },
+    pinned: { mfu: 0.4199, hfu: 0.5599, memUtil: 0.9128, tokPerSec: 127632, stepTimeMs: 24647 },
   },
   {
     name: 'DeepSeek V3 (2048× H800)',
@@ -277,7 +277,7 @@ const INFERENCE_PRESETS: InferencePresetCase[] = [
     batchSize: 32, inputSeqLen: 1024, outputSeqLen: 512,
     weightPrecision: 'fp8', kvCachePrecision: 'fp8',
     flashAttention: true, tensorParallel: 8,
-    pinned: { ttft: 498.36, tpot: 14.495, throughputTps: 2064.1 },
+    pinned: { ttft: 416.33, tpot: 14.434, throughputTps: 2098.7 },
   },
   {
     name: 'LLaMA 3.3 70B (4× H100)',
@@ -286,7 +286,7 @@ const INFERENCE_PRESETS: InferencePresetCase[] = [
     batchSize: 16, inputSeqLen: 1024, outputSeqLen: 512,
     weightPrecision: 'bf16', kvCachePrecision: 'bf16',
     flashAttention: true, tensorParallel: 4,
-    pinned: { ttft: 1556.45, tpot: 13.338, throughputTps: 976.9 },
+    pinned: { ttft: 1462.15, tpot: 13.292, throughputTps: 990.8 },
   },
   {
     name: 'Qwen3 235B-A22B (4× H200)',
@@ -295,7 +295,7 @@ const INFERENCE_PRESETS: InferencePresetCase[] = [
     batchSize: 32, inputSeqLen: 1024, outputSeqLen: 512,
     weightPrecision: 'fp8', kvCachePrecision: 'fp8',
     flashAttention: true, tensorParallel: 4,
-    pinned: { ttft: 550.63, tpot: 13.827, throughputTps: 2141.4 },
+    pinned: { ttft: 455.21, tpot: 13.756, throughputTps: 2185.0 },
   },
   {
     name: 'LLaMA 3.3 70B INT4 (1× H200)',

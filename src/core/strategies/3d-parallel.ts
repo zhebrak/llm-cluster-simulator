@@ -688,7 +688,8 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
 
     // Non-matmul overhead (memory-bandwidth-bound ops: norms, activations, residual adds)
     const nonMatmulPerMB = computeNonMatmulTimeMs(model, tokensPerMicroBatch, gpu,
-      { tp, sp: this.config.sequenceParallel, pp, ep });
+      { tp, sp: this.config.sequenceParallel, pp, ep,
+        flashAttention: ctx.flashAttention, seqLength: ctx.seqLength, microBatchSize: ctx.microBatchSize });
 
     // Per-layer forward timing model
     // For MoE models, each MoE layer has router, permutation, and load imbalance overhead
@@ -1103,7 +1104,10 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
 
     if (dpTypeScalesWithGA && dp > 1) {
       // Add per-collective latency for FSDP/ZeRO-3 path (per-MB collectives)
-      const dpCollectivesPerMB = layersPerStage * 3; // AllGather fwd + AllGather bwd + ReduceScatter bwd
+      // 3 collectives per layer per MB: AllGather(fwd) + AllGather(bwd) + ReduceScatter(bwd).
+      // Real FSDP with no_sync() skips RS on non-final MBs (GA>1); modeled as full per-MB
+      // communication since the savings are negligible in the compute-bound regime.
+      const dpCollectivesPerMB = layersPerStage * 3;
       dpCommTimePerStep += dpCollectivesPerMB * getDPCollectiveLatencyMs(dp);
       dpNumCollectives = dpCollectivesPerMB * gradientAccumulationSteps;
 

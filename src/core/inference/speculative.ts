@@ -157,7 +157,7 @@ export function estimateVerificationTime(
   const bandwidth = gpu.memoryBandwidthTBps * 1e12;
 
   // Apply bandwidth efficiency (consistent with estimateTPOT)
-  const bandwidthEfficiency = getBandwidthEfficiency(perGPUWeightsBytes);
+  const bandwidthEfficiency = getBandwidthEfficiency(perGPUWeightsBytes + kvBytes);
   const memoryTime = (perGPUWeightsBytes + kvBytes) / (bandwidth * bandwidthEfficiency) * 1000;
 
   let commOverhead = 0;

@@ -60,6 +60,12 @@ export interface ValidationResult {
   results: Array<{ criterion: WinningCriterion; met: boolean }>;
 }
 
+export interface ExpectedChange {
+  field: string;    // Key in TaskConfigSnapshot (flat namespace)
+  check: 'changed' | 'unchanged' | 'increased' | 'decreased' | 'enabled' | 'disabled';
+  label: string;    // For debugging/testing (not shown in UI)
+}
+
 export interface GameTask {
   id: string;             // 'training-beginner-01'
   mode: GameMode;
@@ -71,6 +77,7 @@ export interface GameTask {
   learningObjectives: string[];  // 2-4 concise, action-oriented objectives per task
   setup: TaskSetup;       // Minimal scene-setting
   winningCriteria: WinningCriterion[];
+  expectedChanges?: ExpectedChange[];  // Config validation: required/protected parameter changes
   hints: string[];        // 2-3 progressive educational hints
   successExplanation: string; // Post-success lesson
 }
