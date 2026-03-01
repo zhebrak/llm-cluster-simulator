@@ -24,13 +24,13 @@ export function CriteriaChecklist({ criteria, validation }: CriteriaChecklistPro
               <Circle className="w-4 h-4 text-accent flex-shrink-0" />
             )}
             {state === 'passed' && (
-              <Check className="w-4 h-4 text-green-400 flex-shrink-0" />
+              <Check className="w-4 h-4 text-accent flex-shrink-0" />
             )}
             {state === 'failed' && (
               <X className="w-4 h-4 text-red-400 flex-shrink-0" />
             )}
             <span className={
-              state === 'passed' ? 'text-green-300' :
+              state === 'passed' ? 'text-accent' :
               state === 'failed' ? 'text-red-300' :
               'text-accent'
             }>

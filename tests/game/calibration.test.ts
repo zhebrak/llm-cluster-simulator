@@ -218,8 +218,8 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   // Training advanced (all have BF16+FA+AC from setup)
   'training-advanced-01': { tpDegree: 8, ppDegree: 4, globalBatchSize: 256, pipelineSchedule: 'interleaved-1f1b' },
   'training-advanced-02': { tpDegree: 2, epDegree: 8, mixedPrecision: 'fp8', globalBatchSize: 256 },  // 256 GPUs
-  'training-advanced-03': { cpDegree: 2 },  // 512 GPUs, TP=8 PP=8 from setup, add CP=2 to fit
-  'training-advanced-04': { tpDegree: 4 },  // Reduce TP from 8→4 to improve C/T ratio
+  'training-advanced-03': { cpDegree: 4 },  // 512 GPUs, TP=8 PP=8 from setup, CP=4 reduces bubble via higher GA
+  'training-advanced-04': { tpDegree: 1 },  // Reduce TP from 4→1 to improve C/T ratio (MFU > 42%)
   'training-advanced-05': { finetuningMethod: 'lora' },
   'training-advanced-06': { finetuningMethod: 'qlora' },
   'training-advanced-07': { mixedPrecision: 'fp8', tpDegree: 4, ppDegree: 8, epDegree: 32, globalBatchSize: 8192, microBatchSize: 2 },
@@ -236,7 +236,7 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'inference-beginner-06': { batchSize: 1 },  // reduce batch from 8→1 for low TPOT
   'inference-beginner-07': { flashAttention: true },  // FA needed at 32K seq to avoid OOM
   'inference-beginner-08': { kvCachePrecision: 'fp8' },
-  'inference-beginner-09': { batchSize: 4 },  // sweet spot: TPOT < 15ms AND throughput > 250
+  'inference-beginner-09': { batchSize: 16 },  // sweet spot: TPOT < 13ms AND throughput > 400 (start=32)
   'inference-beginner-10': { continuousBatching: true, batchSize: 16 },
 
   // Inference intermediate

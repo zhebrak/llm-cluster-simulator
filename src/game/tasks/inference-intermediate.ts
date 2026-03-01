@@ -261,17 +261,18 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
     ],
     briefing:
       'Your inference cluster needs to handle high request volume. With LLaMA 3.3 70B on 8 {{a100|A100}}-80GB GPUs ' +
-      'and `TP=8` already configured, a single request generates relatively few tokens per second. But the {{decode}} phase is ' +
+      'and `TP=8`, the current config uses `batch=32`. The {{decode}} phase is ' +
       'memory-bandwidth bound — the GPU reads all model weights for every single token, regardless of batch size. ' +
-      'By batching multiple requests, you amortize the weight read cost across sequences.\n\n' +
+      'Batching amortizes this weight read cost across sequences, but too much batching increases per-token latency.\n\n' +
       'Your SLA requires `TPOT` under 15 ms per token AND throughput above 1100 tok/s. ' +
-      'Blindly maximizing batch size will violate the latency constraint.',
+      'Run the config and check which constraint is not met, then adjust the batch size to satisfy both.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'a100-80gb',
       numGPUs: 8,
       gpusPerNode: 8,
       tensorParallel: 8,
+      batchSize: 32,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference runs successfully' },
@@ -279,13 +280,13 @@ export const INFERENCE_INTERMEDIATE_TASKS: GameTask[] = [
       { field: 'latency.tpot', operator: '<', value: 15, label: 'TPOT < 15 ms' },
     ],
     expectedChanges: [
-      { field: 'batchSize', check: 'increased', label: 'Increased batch size' },
+      { field: 'batchSize', check: 'changed', label: 'Changed batch size' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'At `batch=1`, each decode step reads all weights to produce one token. At `batch=N`, the same weight read produces N tokens. But very high batch sizes push `TPOT` above the SLA.',
-      'There is a productive range of batch sizes that satisfy both constraints. Try moderate values and watch both throughput and `TPOT` — the sweet spot is where throughput exceeds the target while `TPOT` remains under the ceiling.',
+      'At the current batch size, one constraint passes but the other does not. Identify which metric is falling short and think about how batch size affects it.',
+      'There is a productive range of batch sizes that satisfy both constraints. Try adjusting up or down and watch both throughput and `TPOT` — the sweet spot is where throughput exceeds the target while `TPOT` remains under the ceiling. The Batch chart visualizes this tradeoff.',
     ],
     successExplanation:
       'Decode is memory-bandwidth bound: the GPU must read all model weights from `HBM` every decode step. ' +

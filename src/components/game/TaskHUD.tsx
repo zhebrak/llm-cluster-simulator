@@ -3,13 +3,14 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ChevronsUp, ChevronsDown, Lightbulb, RotateCcw, X, Check } from 'lucide-react';
+import { ArrowLeft, ChevronsUp, ChevronsDown, Lightbulb, X, Check } from 'lucide-react';
 import { useGameStore } from '../../stores/game.ts';
 import { getTaskById, getTasksForLevel } from '../../game/tasks/index.ts';
 import { MODE_LABELS, DIFFICULTY_LABELS } from '../../game/constants.ts';
 import { CriteriaChecklist } from './CriteriaChecklist.tsx';
 import { GlossaryText } from './GlossaryText.tsx';
 import { Tooltip } from '../ui/Tooltip.tsx';
+import { ConfirmResetButton } from '../ui/ConfirmResetButton.tsx';
 
 export function TaskHUD() {
   const activeTaskId = useGameStore(s => s.activeTaskId);
@@ -117,14 +118,7 @@ export function TaskHUD() {
         <div className="flex-1" />
 
         {/* Reset to task defaults */}
-        <Tooltip text="Reset to task defaults">
-          <button
-            onClick={resetTask}
-            className="text-gray-400 hover:text-gray-300 cursor-pointer p-1 flex-shrink-0"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-        </Tooltip>
+        <ConfirmResetButton onConfirm={resetTask} tooltip="Reset to task defaults" />
 
         {/* Expand/collapse toggle */}
         <Tooltip text={hudExpanded ? 'Collapse' : 'Expand'}>

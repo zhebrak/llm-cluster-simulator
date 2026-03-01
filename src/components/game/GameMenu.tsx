@@ -64,7 +64,7 @@ function LevelCard({ mode, difficulty }: { mode: GameMode; difficulty: GameDiffi
           {DIFFICULTY_LABELS[difficulty]}
         </span>
         {isComplete ? (
-          <Trophy className="w-4 h-4 text-yellow-400" />
+          <Trophy className="w-4 h-4 text-green-400" />
         ) : (
           <ChevronRight className="w-4 h-4 text-gray-500" />
         )}

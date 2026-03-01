@@ -192,6 +192,9 @@ export interface ConfigState {
   setTrainingGoal: (goal: TrainingGoal) => void;
   setTargetTokens: (tokens: number) => void;
 
+  // Actions - Snapshot restore (for game/RPG mode exit)
+  restoreFromSnapshot: (json: string) => void;
+
 }
 
 /**
@@ -598,10 +601,12 @@ const validPrecisions = new Set<string>(['fp32', 'tf32', 'fp16', 'bf16', 'fp8', 
 const validInferencePrecisions = new Set<string>(Object.keys(PRECISION_SPECS));
 const validTrainingGoals = new Set<string>(['chinchilla', 'heavy-overtrain', 'finetune', 'custom']);
 
-function loadPersistedState(): typeof initialState {
+/**
+ * Rehydrate config state from a raw JSON string (same format saveState writes).
+ * Returns initialState on any parse/validation error.
+ */
+function rehydrateFromJSON(raw: string): typeof initialState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return initialState;
     const { state: ps, version } = JSON.parse(raw);
     if (version !== STORAGE_VERSION || !ps) return initialState;
 
@@ -687,6 +692,12 @@ function loadPersistedState(): typeof initialState {
   } catch {
     return initialState;
   }
+}
+
+function loadPersistedState(): typeof initialState {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return initialState;
+  return rehydrateFromJSON(raw);
 }
 
 /**
@@ -1524,6 +1535,14 @@ export const useConfigStore = create<ConfigState>()(
         }));
       }
       }); // end withPreservedCustomModels
+      useSimulationStore.getState().reset();
+    },
+
+    restoreFromSnapshot: (json: string) => {
+      const rehydrated = rehydrateFromJSON(json);
+      set(() => rehydrated);
+      // Persist so localStorage stays in sync
+      saveState(useConfigStore.getState());
       useSimulationStore.getState().reset();
     },
   }))

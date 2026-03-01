@@ -321,7 +321,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'flash-attention': {
     display: 'Flash Attention',
     definition:
-      'IO-aware attention algorithm using tiling to minimize HBM reads/writes. Reduces attention memory from O(N²) to O(N).',
+      'IO-aware attention algorithm using tiling to minimize HBM reads/writes. Reduces attention memory from `O(N²)` to `O(N)`.',
   },
   sharding: {
     display: 'sharding',
@@ -365,12 +365,12 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'self-attention': {
     display: 'self-attention',
     definition:
-      'Core transformer operation: each token attends to all others. Scores = softmax(QK^T/√d)·V. Compute and memory scale quadratically with sequence length.',
+      'Core transformer operation: each token attends to all others. `Scores = softmax(QK^T/√d)·V`. Compute and memory scale quadratically with sequence length.',
   },
   'attention-matrix': {
     display: 'attention matrix',
     definition:
-      'The N×N matrix of attention scores between all token pairs. Standard computation requires O(N²) memory.',
+      'The `N × N` matrix of attention scores between all token pairs. Standard computation requires `O(N²)` memory.',
   },
   'sequence-length': {
     display: 'sequence length',

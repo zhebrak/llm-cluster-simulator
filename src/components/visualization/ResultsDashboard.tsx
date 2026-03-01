@@ -24,6 +24,7 @@ import { Activity, Cpu, HardDrive, Zap, Clock, DollarSign, TrendingUp, Timer, In
 import { useSimulationStore } from '../../stores/simulation.ts';
 import { useConfigStore, type TrainingGoal } from '../../stores/config.ts';
 import { useGameStore } from '../../stores/game.ts';
+import { useRPGStore } from '../../stores/rpg.ts';
 import { formatBytes, formatNumber, formatInteger, formatTime, formatLatency, formatTokensShort } from '../../types/base.ts';
 import type { ModelSpec } from '../../types/index.ts';
 import type { InferenceSimulationResult } from '../../types/inference.ts';
@@ -219,11 +220,12 @@ const GOAL_LABELS: Record<TrainingGoal, string> = {
 // Per-GPU-hour cost lookup — sourced from shared cost module
 
 // Shared Analysis panel for both training and inference
-function AnalysisPanel({ bottleneck, bottleneckColor, recommendations, blurred }: {
+function AnalysisPanel({ bottleneck, bottleneckColor, recommendations, blurred, blurLabel = 'Hidden in learning mode' }: {
   bottleneck: string;
   bottleneckColor: string;
   recommendations: string[];
   blurred?: boolean;
+  blurLabel?: string;
 }) {
   return (
     <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
@@ -234,7 +236,7 @@ function AnalysisPanel({ bottleneck, bottleneckColor, recommendations, blurred }
       <div className="relative">
         {blurred && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <span className="text-xs text-gray-500">Hidden in learning mode</span>
+            <span className="text-xs text-gray-500">{blurLabel}</span>
           </div>
         )}
       <div className={`flex gap-6${blurred ? ' blur-sm pointer-events-none select-none' : ''}`}>
@@ -469,9 +471,10 @@ interface InferenceResultsProps {
   continuousBatching: boolean;
   batchSize: number;
   blurred?: boolean;
+  blurLabel?: string;
 }
 
-function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, numGPUs, tensorParallel, expertParallel: simExpertParallel, continuousBatching: simContinuousBatching, batchSize: simBatchSize, blurred }: InferenceResultsProps) {
+function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, numGPUs, tensorParallel, expertParallel: simExpertParallel, continuousBatching: simContinuousBatching, batchSize: simBatchSize, blurred, blurLabel }: InferenceResultsProps) {
   const { latency, throughput, memory, kvCacheState, utilization, speculative } = result;
   const isCustomModel = useConfigStore(s => s.modelId.startsWith('custom-'));
   const paretoResult = useSimulationStore(s => s.inference.paretoResult);
@@ -951,6 +954,7 @@ function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, 
         bottleneckColor={utilization.bottleneck === 'memory_capacity' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}
         recommendations={result.recommendations}
         blurred={blurred}
+        blurLabel={blurLabel}
       />
 
       {/* Speculative Decoding (if enabled) */}
@@ -1043,6 +1047,7 @@ interface TrainingResultsProps {
   sequenceLength: number;
   configSnapshot: NonNullable<import('../../stores/simulation.ts').TrainingSimulationState['configSnapshot']> | null;
   blurred?: boolean;
+  blurLabel?: string;
 }
 
 function TrainingResults({
@@ -1058,6 +1063,7 @@ function TrainingResults({
   sequenceLength,
   configSnapshot,
   blurred,
+  blurLabel,
 }: TrainingResultsProps) {
   const isCustomModel = useConfigStore(s => s.modelId.startsWith('custom-'));
   const clusterConfig = useConfigStore.getState().clusterConfig;
@@ -1837,6 +1843,7 @@ function TrainingResults({
           }
           recommendations={result.analysis.recommendations}
           blurred={blurred}
+          blurLabel={blurLabel}
         />
       )}
 
@@ -1868,6 +1875,9 @@ export function ResultsDashboard() {
   const simulation = useSimulationStore();
   const config = useConfigStore();
   const inTask = useGameStore(s => !!s.activeTaskId);
+  const inMission = useRPGStore(s => !!s.activeMissionId);
+  const blurred = inTask || inMission;
+  const blurLabel = inTask ? 'Hidden in learning mode' : 'Hidden in game mode';
 
   const { status, inference } = simulation;
   // Legacy fallback for training mode
@@ -1912,12 +1922,12 @@ export function ResultsDashboard() {
           </p>
           {recommendations.length > 0 && (
             <div className="mt-5 text-left max-w-lg relative">
-              {inTask && (
+              {blurred && (
                 <div className="absolute inset-0 flex items-center justify-center z-10">
-                  <span className="text-xs text-gray-500">Hidden in learning mode</span>
+                  <span className="text-xs text-gray-500">{blurLabel}</span>
                 </div>
               )}
-              <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>
+              <div className={blurred ? 'blur-sm pointer-events-none select-none' : ''}>
               <p className="text-base font-medium text-gray-300 flex items-center gap-1.5 mb-2">
                 <Lightbulb className="w-4 h-4 text-yellow-400 shrink-0" />
                 Suggestions
@@ -1946,7 +1956,8 @@ export function ResultsDashboard() {
         expertParallel={inference.expertParallel}
         continuousBatching={inference.continuousBatching}
         batchSize={inference.batchSize}
-        blurred={inTask}
+        blurred={blurred}
+        blurLabel={blurLabel}
       />
     );
   }
@@ -1968,12 +1979,12 @@ export function ResultsDashboard() {
         </p>
         {suggestions.length > 0 && (
           <div className="mt-5 text-left w-full max-w-md relative">
-            {inTask && (
+            {blurred && (
               <div className="absolute inset-0 flex items-center justify-center z-10">
-                <span className="text-xs text-gray-500">Hidden in learning mode</span>
+                <span className="text-xs text-gray-500">{blurLabel}</span>
               </div>
             )}
-            <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>
+            <div className={blurred ? 'blur-sm pointer-events-none select-none' : ''}>
             <p className="text-base font-medium text-gray-300 flex items-center gap-1.5 mb-2">
               <Lightbulb className="w-4 h-4 text-yellow-400 shrink-0" />
               Suggestions
@@ -2006,7 +2017,8 @@ export function ResultsDashboard() {
       globalBatchSize={snapshot?.globalBatchSize ?? config.training.globalBatchSize}
       sequenceLength={snapshot?.sequenceLength ?? config.sequenceLength}
       configSnapshot={snapshot}
-      blurred={inTask}
+      blurred={blurred}
+        blurLabel={blurLabel}
     />
   );
 }

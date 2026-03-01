@@ -57,13 +57,13 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       '`FSDP` across 16 GPUs works, but `MFU` is limited by inter-node `FSDP` ' +
         'communication. With 16 GPUs across 2 nodes, the `AllGather` and ' +
         '`ReduceScatter` cross InfiniBand for every layer.',
-      'Switch the strategy from "`FSDP`" to "`FSDP` + TP" in the sidebar. TP ' +
+      'Switch the strategy from "`FSDP`" to "`FSDP + TP`" in the sidebar. `TP` ' +
         'handles intra-node communication over {{nvlink|NVLink}} (900 GB/s on H100) while `FSDP` ' +
         'handles inter-node communication. This reduces the volume of slow ' +
         'inter-node traffic.',
-      'Try different TP degrees with `FSDP`+TP. TP `AllReduce`s stay on `NVLink`, ' +
-        'and `FSDP` overlaps its inter-node comms with compute. Balance TP ' +
-        '(memory reduction) against DP (throughput scaling).',
+      'Try different `TP` degrees with `FSDP+TP`. `TP` `AllReduce`s stay on `NVLink`, ' +
+        'and `FSDP` overlaps its inter-node comms with compute. Balance `TP` ' +
+        '(memory reduction) against `DP` (throughput scaling).',
     ],
     successExplanation:
       'Tensor Parallelism splits each weight matrix column-wise (or row-wise) ' +
@@ -195,7 +195,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'Reduce TP so it fits within a single node. Let `FSDP` handle the inter-node communication instead.',
     ],
     successExplanation:
-      '{{2d-parallel|2D parallelism}} (`FSDP`+TP) is the standard approach for modern LLM training. The ' +
+      '{{2d-parallel|2D parallelism}} (`FSDP+TP`) is the standard approach for modern LLM training. The ' +
       'principle is simple: use the fastest interconnect for the most frequent ' +
       'communication. `TP` `AllReduce`s happen every layer (high frequency), so they ' +
       'must go over `NVLink` (~900 GB/s). When `TP=16` spans two nodes, those `AllReduce`s ' +
@@ -361,7 +361,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
     learningObjectives: [
       'Understand virtual pipeline stages: each rank gets v non-contiguous chunks of layers',
       'Know interleaved bubble = (pp-1)/(pp-1 + m×v) — v multiplies microbatches in denominator',
-      'Understand the tradeoff: more VP = less bubble but more P2P communication and memory',
+      'Understand the tradeoff: more `v` = less bubble but more P2P communication and memory',
       'Know layers per physical stage must be divisible by v',
     ],
     briefing:
@@ -523,7 +523,7 @@ export const TRAINING_INTERMEDIATE_TASKS: GameTask[] = [
       'communication becomes a real bottleneck. The `AllGather` to reconstruct ' +
       'weights and the `ReduceScatter` for gradients now traverse the network ' +
       'fabric. Batch size, `TP` degree, and overlap efficiency all matter more at ' +
-      'this scale. Configure `FSDP`+TP to achieve `MFU` above 40% with memory ' +
+      'this scale. Configure `FSDP+TP` to achieve `MFU` above 40% with memory ' +
       'utilization below 40% on 64 GPUs.',
     setup: {
       modelId: 'llama3.3-70b',

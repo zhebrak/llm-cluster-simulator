@@ -243,6 +243,11 @@ body {
   100% { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes confirm-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-360deg); }
+}
+
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
@@ -282,6 +287,15 @@ body {
 
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes cipher-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+.animate-cipher-pulse {
+  animation: cipher-pulse 4s ease-in-out infinite;
 }
 
 .animate-flow {
@@ -410,6 +424,8 @@ body {
 .bg-accent:hover, .hover\:bg-accent:hover { background-color: var(--color-btn-hover); }
 .text-accent { color: var(--color-btn-text); }
 .ring-accent { --tw-ring-color: var(--color-btn-ring); }
+.bg-accent-10 { background-color: color-mix(in srgb, var(--color-btn) 10%, transparent); }
+.hover\:bg-accent-20:hover { background-color: color-mix(in srgb, var(--color-btn) 20%, transparent); }
 
 /* Input styles */
 .input {
@@ -528,6 +544,7 @@ input[type="range"]::-moz-range-track {
   .focus\:ring-offset-gray-900:focus { --tw-ring-offset-color: var(--color-bg-primary) !important; }
 }
 
+
 /* =========================================================================
    Light theme: Override Tailwind dark classes so they render as light colors.
    In dark mode this entire block is skipped — Tailwind renders natively.
@@ -551,7 +568,8 @@ input[type="range"]::-moz-range-track {
 
 .text-white { color: var(--color-text-primary) !important; }
 .bg-accent, .bg-accent .text-white,
-.bg-yellow-600, .bg-yellow-600 .text-white { color: #ffffff !important; }
+.bg-yellow-600, .bg-yellow-600 .text-white,
+.bg-teal-600, .bg-teal-600 .text-white { color: #ffffff !important; }
 .text-gray-100 { color: var(--color-text-primary) !important; }
 .text-gray-200 { color: var(--color-text-primary) !important; }
 .text-gray-300 { color: var(--color-text-secondary) !important; }
@@ -633,6 +651,85 @@ input[type="range"]::-moz-range-track {
 .bg-green-400 { background-color: #40a070 !important; }
 .bg-yellow-500\/20 { background-color: rgba(201, 160, 32, 0.12) !important; }
 .hover\:bg-gray-700\/50:hover { background-color: var(--color-bg-hover) !important; }
+
+/* Approach-invalid warning (amber) */
+.text-amber-200\/90 { color: #92610a !important; }
+.bg-amber-900\/20 { background-color: rgba(224, 180, 100, 0.15) !important; }
+.border-amber-700\/30 { border-color: rgba(180, 130, 40, 0.25) !important; }
+
+/* RPG mode — amber text for light theme */
+.text-amber-100\/60 { color: rgba(120, 53, 15, 0.85) !important; }
+.text-amber-100\/70 { color: rgba(120, 53, 15, 0.9) !important; }
+.text-amber-200 { color: #92400e !important; }
+.text-amber-200\/80 { color: rgba(146, 64, 14, 0.9) !important; }
+.text-amber-300 { color: #a16207 !important; }
+.text-amber-300\/80 { color: rgba(161, 98, 7, 0.9) !important; }
+.text-amber-400 { color: #b45309 !important; }
+.text-amber-400\/60 { color: rgba(180, 83, 9, 0.75) !important; }
+.text-amber-400\/70 { color: rgba(180, 83, 9, 0.85) !important; }
+.text-amber-500 { color: #d97706 !important; }
+.text-amber-500\/70 { color: rgba(180, 83, 9, 0.85) !important; }
+
+/* RPG mode — amber backgrounds for light theme */
+.bg-amber-500\/5 { background-color: rgba(217, 119, 6, 0.05) !important; }
+.bg-amber-500\/10 { background-color: rgba(217, 119, 6, 0.08) !important; }
+.bg-amber-500\/20 { background-color: rgba(217, 119, 6, 0.12) !important; }
+.bg-amber-400\/30 { background-color: rgba(217, 119, 6, 0.15) !important; }
+
+/* RPG mode — amber borders for light theme */
+.border-amber-500\/20 { border-color: rgba(180, 83, 9, 0.2) !important; }
+.border-amber-500\/30 { border-color: rgba(180, 83, 9, 0.25) !important; }
+.border-amber-500\/40 { border-color: rgba(180, 83, 9, 0.35) !important; }
+.border-amber-500\/50 { border-color: rgba(180, 83, 9, 0.4) !important; }
+.border-amber-800\/30 { border-color: rgba(146, 64, 14, 0.25) !important; }
+.border-l-amber-500\/50 { border-left-color: rgba(180, 83, 9, 0.4) !important; }
+
+/* RPG mode — amber hover states for light theme */
+.hover\:text-amber-100:hover { color: #78350f !important; }
+.hover\:text-amber-300:hover { color: #a16207 !important; }
+.hover\:text-amber-200:hover { color: #92400e !important; }
+.hover\:text-amber-400:hover { color: #b45309 !important; }
+.hover\:bg-amber-500\/5:hover { background-color: rgba(217, 119, 6, 0.08) !important; }
+.hover\:bg-amber-500\/20:hover { background-color: rgba(217, 119, 6, 0.15) !important; }
+.hover\:border-amber-500\/40:hover { border-color: rgba(180, 83, 9, 0.35) !important; }
+
+/* RPG mode — teal for light theme */
+.text-teal-400 { color: #0d9488 !important; }
+.text-teal-400\/70 { color: rgba(13, 148, 136, 0.7) !important; }
+.text-teal-300 { color: #0d9488 !important; }
+.text-teal-200 { color: #0f766e !important; }
+.hover\:text-teal-200:hover { color: #0f766e !important; }
+.hover\:text-teal-300:hover { color: #0f766e !important; }
+.bg-teal-500\/20 { background-color: rgba(13, 148, 136, 0.12) !important; }
+.bg-teal-600 { background-color: #0d9488 !important; }
+.hover\:bg-teal-500:hover { background-color: #0f766e !important; }
+
+/* RPG mode — red for light theme */
+.text-red-500\/70 { color: rgba(220, 38, 38, 0.8) !important; }
+
+/* RPG mode — sky (hints, navigation) for light theme */
+.text-sky-400 { color: #0284c7 !important; }
+.text-sky-400\/60 { color: rgba(2, 132, 199, 0.75) !important; }
+.text-sky-400\/70 { color: rgba(2, 132, 199, 0.85) !important; }
+.text-sky-300 { color: #0369a1 !important; }
+.text-sky-300\/80 { color: rgba(3, 105, 161, 0.9) !important; }
+.text-sky-200\/80 { color: rgba(3, 105, 161, 0.9) !important; }
+.text-sky-200\/90 { color: rgba(3, 105, 161, 0.95) !important; }
+.bg-sky-900\/20 { background-color: rgba(14, 165, 233, 0.08) !important; }
+.bg-sky-400\/30 { background-color: rgba(14, 165, 233, 0.10) !important; }
+.border-sky-500\/30 { border-color: rgba(2, 132, 199, 0.30) !important; }
+.border-sky-700\/30 { border-color: rgba(3, 105, 161, 0.25) !important; }
+.border-sky-400\/40 { border-color: rgba(2, 132, 199, 0.35) !important; }
+.border-l-sky-400\/50 { border-left-color: rgba(2, 132, 199, 0.4) !important; }
+.bg-sky-500\/15 { background-color: rgba(2, 132, 199, 0.10) !important; }
+.hover\:text-sky-300:hover { color: #0369a1 !important; }
+.hover\:text-sky-200:hover { color: #075985 !important; }
+
+/* RPG mode — additional gray opacities for light theme */
+.text-gray-300\/80 { color: rgba(100, 116, 139, 0.95) !important; }
+.text-gray-300\/70 { color: rgba(100, 116, 139, 0.9) !important; }
+.hover\:bg-gray-700\/30:hover { background-color: rgba(226, 232, 240, 0.5) !important; }
+
 
 } /* end [data-theme="light"] */
 

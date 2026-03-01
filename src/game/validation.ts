@@ -46,6 +46,7 @@ export interface TaskConfigSnapshot {
   pagedAttention: boolean;
   continuousBatching: boolean;
   speculativeDecoding: boolean;
+  pricePerGPUHour: number | null;
 }
 
 /**
@@ -88,6 +89,7 @@ export function captureTaskConfig(): TaskConfigSnapshot {
     pagedAttention: state.inference.pagedAttention,
     continuousBatching: state.inference.continuousBatching,
     speculativeDecoding: state.inference.speculativeDecoding,
+    pricePerGPUHour: state.pricePerGPUHour,
   };
 }
 
@@ -234,6 +236,8 @@ export function buildValidationContext(
       speculative: result.speculative,
       continuousBatching: result.continuousBatching,
       maxConcurrentRequests: result.maxConcurrentRequests,
+      // Hardware context
+      numGPUs,
       // Derived fields not in the engine output
       memoryUtilization: result.utilization?.memoryCapacityUtilization,
       costPerMillionTokens: calculateCostPerMillionTokens(

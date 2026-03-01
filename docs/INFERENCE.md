@@ -125,13 +125,16 @@ Source: `src/core/inference/latency.ts:getQuantizationOverhead()`
 Model-size-dependent sigmoid reflecting HBM burst utilization:
 
 ```
-efficiency = max(0.35, min(0.85, 0.35 + 0.50 * (1 - 1 / (1 + weightGB / 5))))
+efficiency = max(0.35, min(0.85, 0.35 + 0.50 * (1 - 1 / (1 + totalGB / 5))))
 ```
+
+where `totalGB` = (weights + KV cache) in GiB. At batch=1 with short sequences,
+KV cache is small so `totalGB` ≈ weight bytes alone.
 
 | Model Size | Efficiency |
 |------------|------------|
-| Tiny / draft | ~0.35 |
-| 1B | ~0.43 |
+| Tiny / draft | ~0.37 |
+| 1B | ~0.49 |
 | 7B | ~0.72 |
 | 70B | ~0.83 |
 | 405B | ~0.85 |

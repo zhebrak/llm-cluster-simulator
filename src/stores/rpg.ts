@@ -1,0 +1,530 @@
+/**
+ * RPG game mode store — manages mission progression, skills, and narrative state.
+ *
+ * State machine (RPGOverlay derives from state):
+ *   !active                                         → null
+ *   active && showArcComplete                       → ArcComplete
+ *   active && !activeMissionId && !missionSelectDismissed → MissionSelect
+ *   active && !activeMissionId && missionSelectDismissed  → null (RPG active, no UI)
+ *   active && activeMissionId && passed && !dismissed → MissionHUD + MissionSuccess
+ *   active && activeMissionId                       → MissionHUD
+ *
+ * Mutual exclusion: RPG and learning mode cannot be active simultaneously.
+ * Both manipulate the config store — soft-exit one before entering the other.
+ */
+
+import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
+import type { ValidationResult } from '../game/types.ts';
+import type { TaskConfigSnapshot } from '../game/validation.ts';
+import { buildValidationContext, validateTask, captureTaskConfig, validateExpectedChanges } from '../game/validation.ts';
+import { applySetupToConfig } from '../game/setup.ts';
+import { RPG_STORAGE_KEY, PRE_RPG_CONFIG_KEY } from '../rpg/constants.ts';
+import { getMissionById, getMissionsForArc, isMissionUnlocked } from '../rpg/missions/index.ts';
+import { useConfigStore } from './config.ts';
+import { useSimulationStore } from './simulation.ts';
+import { useGameStore, _registerRPGStore } from './game.ts';
+
+const CONFIG_STORAGE_KEY = 'llm-sim-config';
+
+interface RPGState {
+  // Core
+  active: boolean;
+  activeMissionId: string | null;
+
+  // Task state
+  hintsRevealed: number;
+  attempts: number;
+  lastValidation: ValidationResult | null;
+  approachValid: boolean;
+  lastValidatedRunCounter: number;
+
+  // Progression
+  completedMissions: string[];      // mission IDs
+  earnedSkills: string[];           // skill IDs
+  missionStates: Record<string, {   // per-mission saved state
+    hintsRevealed: number;
+    attempts: number;
+    lastValidation: ValidationResult | null;
+  }>;
+
+  // Intro briefing
+  introSeen: boolean;              // Permanent latch — once true, stays true
+  seenHardwareTierIds: string[];   // Tier IDs the player has viewed in MissionSelect
+
+  // Transient UI (NOT persisted)
+  showingBriefing: boolean;        // True when re-reading briefing via button
+
+  // Config snapshots
+  savedConfigSnapshot: string | null;
+  taskConfigSnapshot: TaskConfigSnapshot | null;
+
+  // Resume
+  lastMissionId: string | null;
+
+  // Transient UI state
+  showArcComplete: string | null;   // arcId or null
+  successDismissed: boolean;
+  menuOpen: boolean;
+  missionSelectDismissed: boolean;
+  // Actions
+  enter: () => void;
+  exit: () => void;
+  startMission: (id: string) => void;
+  resetMission: () => void;
+  revealNextHint: () => void;
+  acknowledgeMissionSuccess: () => void;
+  dismissSuccess: () => void;
+  reviewMissionSuccess: () => void;
+  dismissArcComplete: () => void;
+  openMenu: () => void;
+  closeMenu: () => void;
+  dismissMissionSelect: () => void;
+  showMissionSelect: () => void;
+  dismissIntro: () => void;
+  showBriefing: () => void;
+  markHardwareSeen: (ids: string[]) => void;
+  resetProgress: () => void;
+}
+
+// ── Persistence helpers ──────────────────────────────────────────────────
+
+function persistRPGState(state: RPGState): void {
+  try {
+    const toSave = {
+      active: state.active,
+      activeMissionId: state.activeMissionId,
+      hintsRevealed: state.hintsRevealed,
+      attempts: state.attempts,
+      completedMissions: state.completedMissions,
+      earnedSkills: state.earnedSkills,
+      missionStates: state.missionStates,
+      savedConfigSnapshot: state.savedConfigSnapshot,
+      taskConfigSnapshot: state.taskConfigSnapshot,
+      lastValidatedRunCounter: state.lastValidatedRunCounter,
+      lastMissionId: state.lastMissionId,
+      introSeen: state.introSeen,
+      seenHardwareTierIds: state.seenHardwareTierIds,
+    };
+    localStorage.setItem(RPG_STORAGE_KEY, JSON.stringify(toSave));
+  } catch { /* localStorage full or unavailable */ }
+}
+
+function loadPersistedRPGState(): Partial<RPGState> {
+  try {
+    const raw = localStorage.getItem(RPG_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function snapshotConfig(): string | null {
+  try {
+    return localStorage.getItem(CONFIG_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function restoreMissionState(state: RPGState, missionId: string): void {
+  const saved = state.missionStates[missionId];
+  const isCompleted = state.completedMissions.includes(missionId);
+
+  if (isCompleted && saved) {
+    state.hintsRevealed = saved.hintsRevealed;
+    state.attempts = saved.attempts;
+    state.lastValidation = saved.lastValidation;
+    state.successDismissed = true;
+  } else if (saved) {
+    state.hintsRevealed = saved.hintsRevealed;
+    state.attempts = saved.attempts;
+    state.lastValidation = saved.lastValidation;
+    state.successDismissed = false;
+  } else {
+    state.hintsRevealed = 0;
+    state.attempts = 0;
+    state.lastValidation = null;
+    state.successDismissed = false;
+  }
+}
+
+function saveMissionState(state: RPGState): void {
+  if (state.activeMissionId) {
+    state.missionStates[state.activeMissionId] = {
+      hintsRevealed: state.hintsRevealed,
+      attempts: state.attempts,
+      lastValidation: state.lastValidation,
+    };
+  }
+}
+
+// ── Load initial state ───────────────────────────────────────────────────
+
+const persisted = loadPersistedRPGState();
+
+// Crash recovery: if pre-RPG config exists but RPG is not active, restore
+try {
+  const preRPGConfig = localStorage.getItem(PRE_RPG_CONFIG_KEY);
+  if (preRPGConfig && !persisted.active) {
+    localStorage.setItem(CONFIG_STORAGE_KEY, preRPGConfig);
+    localStorage.removeItem(PRE_RPG_CONFIG_KEY);
+  }
+} catch { /* ignore */ }
+
+// ── Store ────────────────────────────────────────────────────────────────
+
+export const useRPGStore = create<RPGState>()(
+  immer((set, get) => ({
+    active: persisted.active ?? false,
+    activeMissionId: persisted.activeMissionId ?? null,
+    hintsRevealed: persisted.hintsRevealed ?? 0,
+    attempts: persisted.attempts ?? 0,
+    lastValidation: null,
+    approachValid: true,
+    lastValidatedRunCounter: persisted.lastValidatedRunCounter ?? 0,
+    completedMissions: persisted.completedMissions ?? [],
+    earnedSkills: persisted.earnedSkills ?? [],
+    missionStates: persisted.missionStates ?? {},
+    introSeen: (persisted as Record<string, unknown>).introSeen as boolean ?? false,
+    seenHardwareTierIds: (persisted as Record<string, unknown>).seenHardwareTierIds as string[] ?? [],
+    showingBriefing: false,
+    savedConfigSnapshot: persisted.savedConfigSnapshot ?? null,
+    taskConfigSnapshot: persisted.taskConfigSnapshot ?? null,
+    lastMissionId: persisted.lastMissionId ?? null,
+    showArcComplete: null,
+    successDismissed: false,
+    menuOpen: false,
+    missionSelectDismissed: false,
+    enter: () => {
+      // Mutual exclusion: soft-exit learning mode if active
+      const game = useGameStore.getState();
+      if (game.active) {
+        game.exit();
+      }
+
+      const snapshot = snapshotConfig();
+      if (snapshot) {
+        try {
+          localStorage.setItem(PRE_RPG_CONFIG_KEY, snapshot);
+        } catch { /* ignore */ }
+      }
+
+      const { lastMissionId } = get();
+
+      set(state => {
+        state.active = true;
+        state.savedConfigSnapshot = snapshot;
+        state.missionSelectDismissed = false;
+
+        // Resume previous mission if available (like game mode's enter)
+        if (lastMissionId) {
+          const mission = getMissionById(lastMissionId);
+          if (mission && isMissionUnlocked(mission, state.completedMissions)) {
+            state.activeMissionId = lastMissionId;
+            restoreMissionState(state, lastMissionId);
+          }
+        }
+      });
+
+      // Config application is outside set() because applySetupToConfig mutates
+      // the config store — can't be inside the immer producer.
+      if (lastMissionId && get().activeMissionId) {
+        const mission = getMissionById(lastMissionId);
+        if (mission && mission.type !== 'pivot') {
+          applySetupToConfig(mission.setup, mission.primaryMode);
+          const taskSnapshot = captureTaskConfig();
+          set(state => {
+            state.taskConfigSnapshot = taskSnapshot;
+            state.approachValid = true;
+          });
+          useSimulationStore.getState().reset();
+        }
+      }
+
+      persistRPGState(get());
+    },
+
+    exit: () => {
+      const { savedConfigSnapshot } = get();
+
+      // Race guard: deactivate FIRST
+      set(state => {
+        saveMissionState(state);
+        state.active = false;
+        state.lastMissionId = state.activeMissionId || state.lastMissionId;
+        state.activeMissionId = null;
+        state.menuOpen = false;
+        state.missionSelectDismissed = false;
+        state.showArcComplete = null;
+        state.lastValidation = null;
+        state.hintsRevealed = 0;
+        state.attempts = 0;
+        state.savedConfigSnapshot = null;
+        state.taskConfigSnapshot = null;
+        state.approachValid = true;
+        state.lastValidatedRunCounter = 0;
+        state.successDismissed = false;
+      });
+
+      try {
+        localStorage.removeItem(PRE_RPG_CONFIG_KEY);
+      } catch { /* ignore */ }
+
+      // Restore original config via config store (no page reload)
+      if (savedConfigSnapshot) {
+        useConfigStore.getState().restoreFromSnapshot(savedConfigSnapshot);
+      }
+
+      persistRPGState(get());
+    },
+
+    startMission: (id: string) => {
+      const mission = getMissionById(id);
+      if (!mission) return;
+
+      const { completedMissions } = get();
+      if (!isMissionUnlocked(mission, completedMissions)) return;
+
+      // Pivot missions: set active mission but skip config/sim setup
+      if (mission.type === 'pivot') {
+        set(state => {
+          saveMissionState(state);
+          state.activeMissionId = id;
+          state.menuOpen = false;
+          state.showArcComplete = null;
+          state.hintsRevealed = 0;
+          state.attempts = 0;
+          state.lastValidation = null;
+          state.successDismissed = false;
+          state.lastValidatedRunCounter = 0;
+        });
+        persistRPGState(get());
+        return;
+      }
+
+      set(state => {
+        // Save current mission state before switching
+        saveMissionState(state);
+
+        state.activeMissionId = id;
+        state.menuOpen = false;
+        state.showArcComplete = null;
+
+        restoreMissionState(state, id);
+        state.lastValidatedRunCounter = 0;
+      });
+
+      // Apply mission setup to config
+      applySetupToConfig(mission.setup, mission.primaryMode);
+
+      // Capture config snapshot for expected-change validation
+      const snapshot = captureTaskConfig();
+      set(state => {
+        state.taskConfigSnapshot = snapshot;
+        state.approachValid = true;
+      });
+
+      useSimulationStore.getState().reset();
+      persistRPGState(get());
+    },
+
+    resetMission: () => {
+      const { activeMissionId } = get();
+      if (!activeMissionId) return;
+
+      const mission = getMissionById(activeMissionId);
+      if (!mission) return;
+
+      // Re-apply setup
+      applySetupToConfig(mission.setup, mission.primaryMode);
+
+      const snapshot = captureTaskConfig();
+      set(state => {
+        state.taskConfigSnapshot = snapshot;
+        state.approachValid = true;
+        state.lastValidation = null;
+        state.lastValidatedRunCounter = 0;
+      });
+
+      useSimulationStore.getState().reset();
+      persistRPGState(get());
+    },
+
+    revealNextHint: () => {
+      const { activeMissionId, hintsRevealed } = get();
+      if (!activeMissionId) return;
+      const mission = getMissionById(activeMissionId);
+      if (!mission) return;
+      if (hintsRevealed >= mission.hints.length) return;
+
+      set(state => {
+        state.hintsRevealed = state.hintsRevealed + 1;
+      });
+      persistRPGState(get());
+    },
+
+    acknowledgeMissionSuccess: () => {
+      const { activeMissionId } = get();
+      if (!activeMissionId) return;
+
+      const mission = getMissionById(activeMissionId);
+      if (!mission) return;
+
+      set(state => {
+        saveMissionState(state);
+
+        // Record completion
+        if (!state.completedMissions.includes(activeMissionId)) {
+          state.completedMissions.push(activeMissionId);
+        }
+
+        // Award skills
+        for (const skillId of mission.skillsAwarded) {
+          if (!state.earnedSkills.includes(skillId)) {
+            state.earnedSkills.push(skillId);
+          }
+        }
+
+        // Check if arc is now fully complete
+        const arcMissions = getMissionsForArc(mission.arcId);
+        const allComplete = arcMissions.every(m =>
+          state.completedMissions.includes(m.id)
+        );
+
+        if (allComplete) {
+          state.showArcComplete = mission.arcId;
+          state.activeMissionId = null;
+        } else {
+          // Advance to next unlocked mission in arc
+          const nextMission = arcMissions.find(m =>
+            !state.completedMissions.includes(m.id) &&
+            isMissionUnlocked(m, state.completedMissions)
+          );
+          state.activeMissionId = null; // go back to mission select
+          state.lastMissionId = nextMission?.id ?? null;
+        }
+
+        state.successDismissed = false;
+        state.missionSelectDismissed = false;
+        state.hintsRevealed = 0;
+        state.attempts = 0;
+        state.lastValidation = null;
+        state.lastValidatedRunCounter = 0;
+      });
+
+      persistRPGState(get());
+    },
+
+    dismissSuccess: () => {
+      set(state => { state.successDismissed = true; });
+    },
+
+    reviewMissionSuccess: () => {
+      set(state => { state.successDismissed = false; });
+    },
+
+    dismissArcComplete: () => {
+      set(state => {
+        state.showArcComplete = null;
+      });
+      persistRPGState(get());
+    },
+
+    openMenu: () => {
+      set(state => { state.menuOpen = true; });
+    },
+
+    closeMenu: () => {
+      set(state => { state.menuOpen = false; });
+    },
+
+    dismissMissionSelect: () => {
+      set(state => {
+        if (!state.activeMissionId) {
+          // No mission in progress — exit RPG mode entirely
+          state.active = false;
+        } else {
+          state.missionSelectDismissed = true;
+        }
+      });
+    },
+
+    showMissionSelect: () => {
+      set(state => { state.missionSelectDismissed = false; });
+    },
+
+    dismissIntro: () => {
+      set(state => {
+        state.introSeen = true;
+        state.showingBriefing = false;
+      });
+      persistRPGState(get());
+    },
+
+    showBriefing: () => {
+      set(state => { state.showingBriefing = true; });
+    },
+
+    markHardwareSeen: (ids: string[]) => {
+      set(state => { state.seenHardwareTierIds = ids; });
+      persistRPGState(get());
+    },
+
+    resetProgress: () => {
+      set(state => {
+        state.completedMissions = [];
+        state.earnedSkills = [];
+        state.missionStates = {};
+        state.activeMissionId = null;
+        state.lastMissionId = null;
+        state.hintsRevealed = 0;
+        state.attempts = 0;
+        state.lastValidation = null;
+        state.successDismissed = false;
+        state.showArcComplete = null;
+        state.introSeen = false;
+        state.seenHardwareTierIds = [];
+      });
+      persistRPGState(get());
+    },
+
+  })),
+);
+
+// Register with game store for mutual exclusion (avoids circular import)
+_registerRPGStore(useRPGStore);
+
+// ── Simulation subscriber ────────────────────────────────────────────────
+
+useSimulationStore.subscribe((simState) => {
+  const rpg = useRPGStore.getState();
+  if (!rpg.active || !rpg.activeMissionId) return;
+  if (simState.status !== 'complete') return;
+  if (simState.runCounter <= rpg.lastValidatedRunCounter) return;
+
+  const mission = getMissionById(rpg.activeMissionId);
+  if (!mission) return;
+
+  const ctx = buildValidationContext(simState, mission.primaryMode);
+  const result = validateTask(ctx, mission.winningCriteria);
+
+  // Validate expected changes (approach validation)
+  let approachValid = true;
+  if (mission.expectedChanges && rpg.taskConfigSnapshot) {
+    const currentConfig = captureTaskConfig();
+    const { valid } = validateExpectedChanges(rpg.taskConfigSnapshot, currentConfig, mission.expectedChanges);
+    approachValid = valid;
+  }
+
+  useRPGStore.setState(state => {
+    state.lastValidation = result;
+    state.approachValid = approachValid;
+    state.lastValidatedRunCounter = simState.runCounter;
+    state.attempts = state.attempts + 1;
+    saveMissionState(state);
+  });
+
+  persistRPGState(useRPGStore.getState());
+});

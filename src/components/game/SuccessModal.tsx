@@ -32,12 +32,12 @@ export function SuccessModal() {
       >
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-            <Check className="w-6 h-6 text-green-400" />
+          <div className="w-10 h-10 rounded-full bg-teal-500/20 flex items-center justify-center">
+            <Check className="w-6 h-6 text-accent" />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-white">{task.title}</h3>
-            <p className="text-sm text-green-400">Challenge Complete</p>
+            <p className="text-sm text-accent">Challenge Complete</p>
           </div>
         </div>
 

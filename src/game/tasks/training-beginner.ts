@@ -13,7 +13,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     title: 'Your First Training Run',
     briefing:
       `Welcome to the world of distributed training! Before we tackle massive models on hundreds of GPUs, let's start with the basics.\n\n` +
-      `You have a single NVIDIA A100 GPU with 80 GB of memory, and a small model: GPT-3 125M (125 million parameters). ` +
+      `You have a single NVIDIA {{a100|A100}} GPU with 80 GB of memory, and a small model: GPT-3 125M (125 million parameters). ` +
       `This is a toy-sized language model by modern standards, but it's perfect for getting started.\n\n` +
       'Your goal: get the model to train at over 50k tokens per second. The default configuration uses {{fp32|FP32}} precision, ' +
       'which runs on standard {{cuda-cores|CUDA cores}}. But the A100 has specialized {{tensor-cores|Tensor Cores}} designed for ' +
@@ -75,7 +75,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       'But look at the current setup: {{gbs|Global Batch Size}} (GBS) is 64, and the {{mbs|Micro-Batch Size}} (MBS) is also 64. ' +
       'That means the GPU tries to run all 64 sequences through the forward pass at once, storing intermediate ' +
       'tensors ({{activation-memory|activations}}) for every sequence simultaneously.\n\n' +
-      'Run the simulation — you\'ll hit `OOM`. The model weights are fine, but 64 sequences worth of activations ' +
+      'Run the simulation — you\'ll hit {{oom|OOM}}. The model weights are fine, but 64 sequences worth of activations ' +
       'is far more than the remaining memory can hold.\n\n' +
       'The fix: {{gradient-accumulation|Gradient Accumulation}} (GA). Instead of processing all 64 sequences in ' +
       'one giant forward pass, GA breaks the batch into smaller chunks. The GPU runs multiple ' +
@@ -145,7 +145,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     briefing:
       `Gemma 3 4B has about 4 billion parameters. ` +
       `You have a single A100-80GB GPU.\n\n` +
-      `Try running the simulation. You'll hit an Out of Memory ({{oom|OOM}}) error. Training a model requires far more ` +
+      `Try running the simulation. You'll hit an Out of Memory (\`OOM\`) error. Training a model requires far more ` +
       `memory than just the weights: you need space for {{gradients}}, {{optimizer-states|optimizer states}} (like Adam's momentum and variance), ` +
       `and {{activation-memory|activation memory}} from the {{forward-pass|forward pass}}.\n\n` +
       `In \`FP32\` (32-bit floating point), the model state alone takes about 16 bytes per parameter — ` +
@@ -275,19 +275,19 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     title: 'Flash Attention',
     briefing:
       `{{self-attention|Self-attention}} is the core operation in Transformers, but standard attention has a significant cost: ` +
-      `materializes an N x N {{attention-matrix|attention matrix}} (where N is the sequence length), consuming memory that's quadratic ` +
+      `materializes an \`N × N\` {{attention-matrix|attention matrix}} (where N is the sequence length), consuming memory that's quadratic ` +
       `in sequence length.\n\n` +
       `You have Gemma 3 4B on a single A100-80GB with \`BF16\` and activation checkpointing enabled. ` +
       `Look at the memory utilization — even with checkpointing, the attention score matrices are ` +
       `taking significant memory.\n\n` +
-      `{{flash-attention|Flash Attention}} is an IO-aware attention algorithm that never materializes the full N x N matrix. Instead, ` +
+      `{{flash-attention|Flash Attention}} is an IO-aware attention algorithm that never materializes the full \`N × N\` matrix. Instead, ` +
       `it computes attention in tiles, dramatically reducing memory usage (from quadratic to linear in sequence length) ` +
       `and improving speed by reducing memory bandwidth bottlenecks.\n\n` +
       `Your goal: get memory utilization below 85%.`,
     concept: 'Quadratic attention and tiled computation',
     learningObjectives: [
-      'Understand standard attention materializes O(N^2) attention score matrix in HBM',
-      'Know Flash Attention tiles computation in SRAM, achieving O(N) memory',
+      'Understand standard attention materializes `O(N²)` attention score matrix in HBM',
+      'Know Flash Attention tiles computation in SRAM, achieving `O(N)` memory',
       'Recognize FA also improves speed 2-4x via better memory access patterns',
     ],
     setup: {
@@ -318,16 +318,16 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     ],
     hints: [
       'Flash Attention eliminates the quadratic attention score memory. The savings grow with sequence length — at short sequences they are modest, but at long sequences they are essential.',
-      'Enable Flash Attention in the sidebar. It reduces attention memory from O(N²) to O(N), freeing up significant headroom.',
+      'Enable Flash Attention in the sidebar. It reduces attention memory from `O(N²)` to `O(N)`, freeing up significant headroom.',
     ],
     successExplanation:
       `[Flash Attention (Dao et al., 2022)](https://arxiv.org/abs/2205.14135) is now the default in virtually every training framework. Instead of ` +
-      `computing the full N x N attention score matrix in {{hbm|HBM}} (GPU main memory), it tiles the computation to fit ` +
+      `computing the full \`N × N\` attention score matrix in {{hbm|HBM}} (GPU main memory), it tiles the computation to fit ` +
       `in {{sram|SRAM}} (the fast on-chip cache), never materializing the full matrix.\n\n` +
-      `Flash Attention eliminates O(N²) \`HBM\` traffic for attention scores by tiling the computation in \`SRAM\`. ` +
+      `Flash Attention eliminates \`O(N²)\` \`HBM\` traffic for attention scores by tiling the computation in \`SRAM\`. ` +
       `The throughput benefit depends on sequence length — at shorter sequences the attention \`HBM\` traffic is a small ` +
       `fraction of total time, but at longer sequences (8K+) it grows quadratically and becomes the dominant bottleneck ` +
-      `without Flash Attention. The memory savings (O(N²) → O(N) activation memory) can be the difference between fitting and \`OOM\` ` +
+      `without Flash Attention. The memory savings (\`O(N²)\` → \`O(N)\` activation memory) can be the difference between fitting and \`OOM\` ` +
       `at long contexts. There is no reason to leave FA off on supported hardware.`,
   },
 

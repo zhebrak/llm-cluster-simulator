@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { GLOSSARY } from '../../src/game/glossary.ts';
 
 const TASK_DIR = join(__dirname, '../../src/game/tasks');
 
@@ -215,6 +216,46 @@ describe('Task formatting lint', () => {
             message += `\n... and ${remaining} more`;
           }
           expect.fail(message);
+        }
+      });
+
+      it('should only reference valid glossary term IDs', () => {
+        const glossaryRefs = [...content.matchAll(/\{\{([a-z0-9-]+)(?:\|[^}]*)?\}\}/g)];
+        const invalid = glossaryRefs
+          .map(m => ({ termId: m[1], line: content.substring(0, m.index).split('\n').length }))
+          .filter(({ termId }) => !GLOSSARY[termId]);
+
+        if (invalid.length > 0) {
+          expect.fail(
+            `Found ${invalid.length} unknown glossary term(s):\n` +
+            invalid.map(({ termId, line }) => `Line ${line}: {{${termId}}}`).join('\n')
+          );
+        }
+      });
+
+      it('should not have partially-backticked compound strategy names', () => {
+        // Catches patterns like `FSDP`+TP or ZeRO-1+`TP` where only part is backticked
+        const PARTIAL_BACKTICK =
+          /`[^`]+`\s*[+-]\s*[A-Z][A-Za-z0-9-]*|[A-Z][A-Za-z0-9-]*\s*[+-]\s*`[^`]+`/g;
+        const violations: string[] = [];
+
+        forEachProseLine((line, i) => {
+          let match;
+          PARTIAL_BACKTICK.lastIndex = 0;
+          while ((match = PARTIAL_BACKTICK.exec(line)) !== null) {
+            if (!isProperlyFormatted(line, match.index)) {
+              violations.push(
+                `Line ${i + 1}, col ${match.index + 1}: partially-backticked "${match[0]}"`,
+              );
+            }
+          }
+        });
+
+        if (violations.length > 0) {
+          expect.fail(
+            `Found ${violations.length} partially-backticked compound term(s):\n` +
+            violations.join('\n'),
+          );
         }
       });
 

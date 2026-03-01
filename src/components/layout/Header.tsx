@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Github, HelpCircle, Moon, Sun, X } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip.tsx';
 import { GameModeButton } from '../game/GameModeButton.tsx';
+import { RPGModeButton } from '../rpg/RPGModeButton.tsx';
 import { useTheme } from '../../hooks/useTheme';
 
 function HelpModal({ onClose }: { onClose: () => void }) {
@@ -166,6 +167,7 @@ export function Header() {
 
         <div className="flex items-center gap-2">
           <GameModeButton />
+          <RPGModeButton />
           <button
             onClick={() => setShowHelp(true)}
             className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors cursor-pointer"

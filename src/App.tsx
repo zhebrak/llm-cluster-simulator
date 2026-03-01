@@ -2,8 +2,9 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { AppShell } from './components/layout/index.ts';
 import { ResultsDashboard } from './components/visualization/index.ts';
 import { GameOverlay } from './components/game/index.ts';
+import { RPGOverlay } from './components/rpg/index.ts';
 import { WelcomeModal } from './components/WelcomeModal.tsx';
-import { useConfigStore, useSimulationStore, useGameStore, findPresetBySlug } from './stores/index.ts';
+import { useConfigStore, useSimulationStore, useGameStore, useRPGStore, findPresetBySlug } from './stores/index.ts';
 import { decodeShareURL } from './utils/share.ts';
 
 function App() {
@@ -16,7 +17,7 @@ function App() {
       history.replaceState({}, '', window.location.pathname);
       return true;
     }
-    if (params.has('config') || params.has('preset') || params.has('learn')) return false;
+    if (params.has('config') || params.has('preset') || params.has('learn') || params.has('rpg')) return false;
     return !localStorage.getItem('llm-sim-welcomed');
   });
   const [presetError, setPresetError] = useState<string | null>(() => {
@@ -41,10 +42,11 @@ function App() {
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
       if (e.shiftKey) {
-        // Ctrl+Shift+Enter - Auto-optimize (disabled in learning mode)
+        // Ctrl+Shift+Enter - Auto-optimize (disabled in learning/RPG mode)
         const mode = useConfigStore.getState().mode;
         const gameActive = useGameStore.getState().active;
-        if (mode === 'training' && !gameActive) {
+        const rpgActive = useRPGStore.getState().active;
+        if (mode === 'training' && !gameActive && !rpgActive) {
           useSimulationStore.getState().autoOptimizeTraining();
         }
       } else {
@@ -61,6 +63,15 @@ function App() {
 
   // Apply URL-encoded config or preset if present
   useEffect(() => {
+    // If welcome modal is showing, deactivate any persisted game/RPG modes
+    if (showWelcome) {
+      const rpg = useRPGStore.getState();
+      if (rpg.active) rpg.exit();
+      const game = useGameStore.getState();
+      if (game.active) game.exit();
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
 
     // ?config= takes precedence over ?preset=
@@ -73,6 +84,15 @@ function App() {
       useConfigStore.getState().loadShareConfig(config);
       history.replaceState({}, '', window.location.pathname + '#shared');
       useSimulationStore.getState().runSimulation();
+      return;
+    }
+
+    if (params.has('rpg')) {
+      history.replaceState({}, '', window.location.pathname + '#rpg');
+      const rpg = useRPGStore.getState();
+      if (!rpg.active) {
+        rpg.enter();
+      }
       return;
     }
 
@@ -130,6 +150,7 @@ function App() {
         </div>
       )}
       <GameOverlay />
+      <RPGOverlay />
       <ResultsDashboard />
     </AppShell>
   );

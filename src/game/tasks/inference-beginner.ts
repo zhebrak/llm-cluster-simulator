@@ -66,7 +66,7 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       'Know that model selection is the first deployment decision — it sets the memory floor',
     ],
     briefing:
-      'LLaMA 3.3 70B is loaded on an {{rtx-4090|RTX 4090}} with 24 GB of memory. ' +
+      'LLaMA 3.3 70B is loaded on an `RTX 4090` with 24 GB of memory. ' +
       'Even at the most aggressive quantization (`INT4`, 0.5 bytes per parameter), ' +
       '`70B × 0.5 = 35 GB` — well beyond the 24 GB limit. No amount of quantization can make this work.\n\n' +
       'When minimum weight memory exceeds GPU capacity, the only option is a different model. ' +
@@ -139,7 +139,7 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'The KV cache consumes massive memory at this batch size and sequence length — the configuration OOMs. Which of those two dimensions can you reduce?',
+      'The KV cache consumes massive memory at this batch size and sequence length — the configuration hits {{oom|OOM}}. Which of those two dimensions can you reduce?',
       'The KV cache scales linearly with both batch size and sequence length — each dimension multiplies the total. Models using `GQA` have fewer KV heads than query heads, reducing per-request cache compared to `MHA` — but many concurrent requests still add up.',
       'Try reducing the batch size significantly. Alternatively, use `FP8` KV cache precision to halve KV cache memory at the same batch size.',
     ],
@@ -174,7 +174,7 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       'each output token requires reading ALL model weights from memory, but performs only a single token\'s ' +
       'worth of computation. This makes memory bandwidth — not `TFLOPS` — the bottleneck.\n\n' +
       'The T4 has modest bandwidth. Your goal: push throughput above 60 tokens per second ' +
-      'without changing the model or precision.',
+      'without changing the model.',
     setup: {
       modelId: 'llama3.1-8b',
       gpuId: 't4',
@@ -193,7 +193,6 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
     expectedChanges: [
       { field: 'gpuId', check: 'changed', label: 'Changed GPU type' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
-      { field: 'weightPrecision', check: 'unchanged', label: 'Did not change weight precision' },
     ],
     hints: [
       'Decode throughput is approximately `bandwidth / weight_bytes` — bandwidth is the constraint, not compute. The T4 has modest memory bandwidth.',
@@ -336,17 +335,17 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
     title: 'Flash Attention for Inference',
     concept: 'Attention memory at long context lengths',
     learningObjectives: [
-      'Understand FA eliminates O(N^2) attention memory, critical at 32K+ token context',
+      'Understand FA eliminates `O(N²)` attention memory, critical at 32K+ token context',
       'Know FA impact grows quadratically with sequence length — moderate at 2K, essential at 32K+',
       'Recognize FA as mandatory for long-context inference (OOM without it)',
     ],
     briefing:
-      'Standard attention computes the full N × N {{attention-matrix|attention matrix}}, consuming O(N²) memory. ' +
+      'Standard attention computes the full `N × N` {{attention-matrix|attention matrix}}, consuming `O(N²)` memory. ' +
       'At a 32K sequence length, this matrix alone consumes several GB — enough to overflow GPU memory.\n\n' +
       'You have LLaMA 3.1 8B on an A100-80GB with {{flash-attention|Flash Attention}} disabled and a 32K input sequence. ' +
-      'The simulation will OOM because the attention score matrix is too large.\n\n' +
+      'The simulation will `OOM` because the attention score matrix is too large.\n\n' +
       'Flash Attention tiles the computation to avoid materializing the full matrix, ' +
-      'reducing memory from O(N²) to O(N). Your goal: make this long-context configuration fit in memory.',
+      'reducing memory from `O(N²)` to `O(N)`. Your goal: make this long-context configuration fit in memory.',
     setup: {
       modelId: 'llama3.1-8b',
       gpuId: 'a100-80gb',
@@ -365,15 +364,15 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
     ],
     hints: [
-      'Without Flash Attention at 32K sequence length, the attention score matrix (batch × heads × 32768² × bytes) consumes several GB. The configuration OOMs.',
-      'Flash Attention computes attention in {{sram|SRAM}} tiles, never materializing the full N × N matrix in HBM. It is mathematically identical — only the memory pattern changes.',
-      'Enable Flash Attention. Memory utilization drops dramatically — from OOM to well within capacity. The savings grow quadratically with sequence length.',
+      'Without Flash Attention at 32K sequence length, the attention score matrix (`batch × heads × 32768² × bytes`) consumes several GB. The configuration OOMs.',
+      'Flash Attention computes attention in {{sram|SRAM}} tiles, never materializing the full `N × N` matrix in HBM. It is mathematically identical — only the memory pattern changes.',
+      'Enable Flash Attention. Memory utilization drops dramatically — from `OOM` to well within capacity. The savings grow quadratically with sequence length.',
     ],
     successExplanation:
       'Flash Attention is now the default in virtually all production inference systems. ' +
-      'Beyond memory savings, it also accelerates prefill by eliminating O(N²) `HBM` reads/writes for attention scores — ' +
+      'Beyond memory savings, it also accelerates prefill by eliminating `O(N²)` `HBM` reads/writes for attention scores — ' +
       'the attention computation stays in fast on-chip `SRAM`.\n\nAt 32K tokens, standard attention requires several GB ' +
-      'just for the score matrix, making it impossible on most GPUs. Flash Attention reduces this to O(N) memory, ' +
+      'just for the score matrix, making it impossible on most GPUs. Flash Attention reduces this to `O(N)` memory, ' +
       'enabling long-context inference that would otherwise be impossible. ' +
       'At long sequences this can significantly reduce prefill time.',
   },
@@ -456,36 +455,38 @@ export const INFERENCE_BEGINNER_TASKS: GameTask[] = [
       'In production serving, you face a fundamental tradeoff. Low batch sizes give fast per-token latency (`TPOT`) ' +
       'but waste GPU bandwidth — the GPU reads all weights to produce few tokens. High batch sizes amortize ' +
       'weight reads across more tokens, improving throughput, but each token takes slightly longer.\n\n' +
-      'You have Qwen 3 14B on a single H100. At `batch=1`, `TPOT` is fast but throughput is very low — the GPU wastes most of its bandwidth serving a single request. ' +
-      'Your goal: achieve both `TPOT` under 15 ms AND throughput above 250 tokens per second. ' +
-      'Find the batch size sweet spot that satisfies both constraints simultaneously.',
+      'You have Qwen 3 14B on a single H100 with `batch=32`. Run the config and observe the metrics. ' +
+      'Your goal: achieve both `TPOT` under 13 ms AND throughput above 400 tokens per second. ' +
+      'Adjust the batch size to find the sweet spot that satisfies both constraints simultaneously.',
     setup: {
       modelId: 'qwen3-14b',
       gpuId: 'h100-sxm',
       numGPUs: 1,
+      batchSize: 32,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Inference succeeds' },
-      { field: 'latency.tpot', operator: '<', value: 15, label: 'TPOT < 15 ms' },
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 250, label: 'Throughput > 250 tok/s' },
+      { field: 'latency.tpot', operator: '<', value: 13, label: 'TPOT < 13 ms' },
+      { field: 'throughput.tokensPerSecond', operator: '>', value: 400, label: 'Throughput > 400 tok/s' },
     ],
     expectedChanges: [
-      { field: 'batchSize', check: 'increased', label: 'Increased batch size' },
+      { field: 'batchSize', check: 'changed', label: 'Changed batch size' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'At `batch=1`, `TPOT` is fast but throughput is far below the 250 tok/s target. You need both constraints met simultaneously — look for a batch size that satisfies both.',
-      'Increase batch size gradually. Each additional sequence amortizes the weight read cost, boosting throughput while `TPOT` increases slowly. There is a sweet spot where both constraints are satisfied. The Batch chart shows how `TPOT` and throughput change with batch size — use it to find the sweet spot.',
+      'Check both `TPOT` and throughput at the current batch size. One of the constraints is not met — which one? Think about what happens if you increase vs decrease the batch size.',
+      'Larger batches amortize weight reads across more tokens, boosting throughput but increasing `TPOT`. Smaller batches reduce `TPOT` but sacrifice throughput. The Batch chart shows how both metrics change — look for the region where both constraints are satisfied.',
       'In production, {{paged-attention|paged attention}} eliminates KV cache fragmentation, allowing 2-4× more concurrent requests than naive allocation.',
     ],
     successExplanation:
       'The latency-throughput tradeoff is the central design decision in LLM serving. ' +
       'Interactive applications (chatbots) prioritize low `TPOT` for responsive streaming. ' +
       'Batch applications prioritize high throughput for cost efficiency.\n\n' +
-      'At `batch=1`, the GPU reads all weights to produce one token — most compute capacity is wasted. ' +
-      'At `batch=4`, the same weight read produces 4 tokens, nearly 4× throughput with only a small `TPOT` increase. ' +
-      'In production, [PagedAttention (Kwon et al., 2023)](https://arxiv.org/abs/2309.06180) eliminates KV cache fragmentation, allowing serving systems like vLLM ' +
+      'Batch size controls this tradeoff directly: each additional request in a batch reuses the same weight ' +
+      'read from `HBM`, improving throughput with only a small per-token latency increase. But past a certain ' +
+      'point, KV cache reads grow large enough to noticeably increase `TPOT`. The sweet spot is where both ' +
+      'constraints are met simultaneously. In production, [PagedAttention (Kwon et al., 2023)](https://arxiv.org/abs/2309.06180) eliminates KV cache fragmentation, allowing serving systems like vLLM ' +
       'to handle 2-4× more concurrent requests than naive allocation.',
   },
 

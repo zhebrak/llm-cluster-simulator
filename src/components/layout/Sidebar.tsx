@@ -18,6 +18,9 @@ import { AVAILABLE_STRATEGIES, STRATEGY_GROUPS } from '../../core/strategies/ind
 import { getGPUHourlyRate } from '../../core/cost/index.ts';
 import { formatNumber } from '../../types/base.ts';
 import { useGameStore } from '../../stores/game.ts';
+import { useRPGStore } from '../../stores/rpg.ts';
+import { getAvailableHardware } from '../../rpg/hardware.ts';
+import { getMissionById } from '../../rpg/missions/index.ts';
 
 // Format numbers with commas for readability
 function formatWithCommas(n: number): string {
@@ -596,6 +599,12 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
   const simulation = useSimulationStore();
   const gameActive = useGameStore(s => s.active);
   const inTask = useGameStore(s => !!s.activeTaskId);
+  const inMission = useRPGStore(s => !!s.activeMissionId);
+  const rpgActive = useRPGStore(s => s.active);
+  const rpgCompletedMissions = useRPGStore(s => s.completedMissions);
+  const rpgActiveMissionId = useRPGStore(s => s.activeMissionId);
+  const blurred = inTask || inMission;
+  const blurLabel = inTask ? 'Hidden in learning mode' : 'Hidden in game mode';
   const [showCustomEditor, setShowCustomEditor] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const optBannerRef = useRef<HTMLDivElement>(null);
@@ -645,13 +654,25 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
     legacy: 'Legacy',
   };
 
+  // In RPG mode, only show GPUs from unlocked hardware tiers + active mission's setup GPU
+  const rpgAllowedGPUs = rpgActive
+    ? (() => {
+        const set = new Set(getAvailableHardware(rpgCompletedMissions).map(s => s.gpuId));
+        if (rpgActiveMissionId) {
+          const mission = getMissionById(rpgActiveMissionId);
+          if (mission?.setup.gpuId) set.add(mission.setup.gpuId);
+        }
+        return set;
+      })()
+    : null;
+
   const groupedGPUs = Object.entries(GPU_CATEGORIES).map(([catId, gpuIds]) => ({
     label: GPU_CATEGORY_LABELS[catId] || catId,
-    options: gpuIds.map(id => ({
+    options: (rpgAllowedGPUs ? gpuIds.filter(id => rpgAllowedGPUs.has(id)) : gpuIds).map(id => ({
       value: id,
       label: ALL_GPUS[id]?.name || id,
     })),
-  }));
+  })).filter(g => g.options.length > 0);
 
   const groupedStrategies = STRATEGY_GROUPS.map(group => ({
     label: group.name,
@@ -730,12 +751,12 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
 
       {/* Example preset cycler — prev / next */}
       <div className="px-3 pt-1.5 pb-3 border-b border-gray-800 relative">
-        {inTask && (
+        {blurred && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <span className="text-xs text-gray-500">Hidden in learning mode</span>
+            <span className="text-xs text-gray-500">{blurLabel}</span>
           </div>
         )}
-        <div className={inTask ? 'blur-sm pointer-events-none select-none' : ''}>
+        <div className={blurred ? 'blur-sm pointer-events-none select-none' : ''}>
         <label className="text-xs text-gray-400 mb-1 block">{config.mode === 'training' ? 'Training' : 'Inference'} Presets</label>
         <div className="flex items-center gap-1.5">
         <Tooltip text={`${getPrevDemoPreset(config.mode).modelLabel} · ${getPrevDemoPreset(config.mode).clusterLabel}`}>
@@ -800,24 +821,31 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
         title="Cluster"
         icon={<Server className="w-4 h-4 text-accent" />}
       >
-        <div>
-          <label className="block text-xs text-gray-400 mb-0.5">Preset</label>
-          <select
-            value={config.clusterId}
-            onChange={(e) => config.setCluster(e.target.value)}
-            className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 ring-accent focus:border-transparent cursor-pointer"
-          >
-            <option value="custom">Custom</option>
-            {groupedPresets.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.options.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+        <div className="relative">
+          {rpgActive && (
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <span className="text-xs text-gray-500">Hidden in game mode</span>
+            </div>
+          )}
+          <div className={rpgActive ? 'blur-sm pointer-events-none select-none' : ''}>
+            <label className="block text-xs text-gray-400 mb-0.5">Preset</label>
+            <select
+              value={config.clusterId}
+              onChange={(e) => config.setCluster(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 ring-accent focus:border-transparent cursor-pointer"
+            >
+              <option value="custom">Custom</option>
+              {groupedPresets.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
         </div>
         <div>
           <label className="block text-xs text-gray-400 mb-0.5">GPU Type</label>
@@ -852,23 +880,30 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
           />
         </div>
         <div className="relative">
-          <NumberInput
-            label="$/GPU-hour"
-            value={config.pricePerGPUHour ?? getGPUHourlyRate(config.gpuId).rate}
-            onChange={(value) => config.setPricePerGPUHour(value)}
-            min={0}
-            step={0.01}
-          />
-          {config.pricePerGPUHour !== null && (
-            <Tooltip text={`Reset to default ($${getGPUHourlyRate(config.gpuId).rate.toFixed(2)}/hr)`} className="contents">
-              <button
-                onClick={() => config.setPricePerGPUHour(null)}
-                className="absolute top-0 right-0 text-xs text-gray-400 hover:text-accent cursor-pointer"
-              >
-                reset to default
-              </button>
-            </Tooltip>
+          {blurred && (
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <span className="text-xs text-gray-500">{blurLabel}</span>
+            </div>
           )}
+          <div className={blurred ? 'blur-sm pointer-events-none select-none' : ''}>
+            <NumberInput
+              label="$/GPU-hour"
+              value={config.pricePerGPUHour ?? getGPUHourlyRate(config.gpuId).rate}
+              onChange={(value) => config.setPricePerGPUHour(value)}
+              min={0}
+              step={0.01}
+            />
+            {config.pricePerGPUHour !== null && (
+              <Tooltip text={`Reset to default ($${getGPUHourlyRate(config.gpuId).rate.toFixed(2)}/hr)`} className="contents">
+                <button
+                  onClick={() => config.setPricePerGPUHour(null)}
+                  className="absolute top-0 right-0 text-xs text-gray-400 hover:text-accent cursor-pointer"
+                >
+                  reset to default
+                </button>
+              </Tooltip>
+            )}
+          </div>
         </div>
         {config.clusterConfig && (
           <div className="text-xs text-gray-500 space-y-1">

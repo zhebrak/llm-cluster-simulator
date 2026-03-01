@@ -25,7 +25,7 @@ export function GameModeButton() {
         onClick={handleClick}
         className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors cursor-pointer ${
           active
-            ? 'text-accent bg-accent/10 hover:bg-accent/20'
+            ? 'text-accent bg-accent-10 hover:bg-accent-20'
             : 'text-gray-500 hover:text-white hover:bg-gray-800/50'
         }`}
       >

@@ -444,9 +444,9 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'Users expect a fast first response ({{ttft|TTFT}} under 500 ms), smooth token streaming ' +
       '({{tpot|TPOT}} under 15 ms), and the system must handle high request volume ' +
       '(throughput over 200 tokens per second).\n\n' +
-      'You have LLaMA 3.3 70B on 8 H100 GPUs with `TP=8`. The current config uses a large batch ' +
-      'and moderately long input sequences. Run it and observe: the batch size pushes `TPOT` above the SLA, ' +
-      'while the prefill compute makes `TTFT` sluggish. Find the configuration that satisfies all ' +
+      'You have LLaMA 3.3 70B on 8 H100 GPUs with `TP=8`, `batch=24`, and 4K input sequences. ' +
+      'Run it and observe the metrics. The three constraints pull in different directions — ' +
+      'adjusting batch size alone may not be enough. Find the configuration that satisfies all ' +
       'three constraints at once.',
     setup: {
       modelId: 'llama3.3-70b',
@@ -454,7 +454,7 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       numGPUs: 8,
       gpusPerNode: 8,
       tensorParallel: 8,
-      batchSize: 64,
+      batchSize: 24,
       inputSeqLen: 4096,
     },
     winningCriteria: [
@@ -464,13 +464,14 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       { field: 'throughput.tokensPerSecond', operator: '>', value: 200, label: 'Throughput > 200 tok/s' },
     ],
     expectedChanges: [
+      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'Run the initial config and check `TTFT`, `TPOT`, and throughput in the dashboard. With `batch=64` at 4K input, both latency metrics exceed their targets. The three constraints pull in different directions.',
-      'Batch size is the primary lever. Lower batch reduces `TPOT` but also reduces throughput. Weight quantization (FP8) improves all three metrics: faster weight reads reduce `TPOT`, faster prefill reduces `TTFT`, and higher per-step efficiency boosts throughput.',
-      'Use FP8 weight precision and find the batch size sweet spot. The Batch chart shows how `TPOT` and throughput change with batch size — look for the region where both constraints are met simultaneously.',
+      'Run the initial config and check all three metrics. `TPOT` may look fine, but `TTFT` exceeds the SLA. Think about what drives `TTFT` — it depends on prefill compute, which scales with batch size and input length.',
+      'Reducing batch size helps `TTFT` but hurts throughput. At very low batch, throughput drops below the target. Is there a way to speed up both prefill and decode without sacrificing throughput?',
+      'Weight quantization (FP8) reduces bytes read per step, speeding up both prefill (lower `TTFT`) and decode (lower `TPOT`). With FP8, find the batch size where all three constraints are met simultaneously.',
     ],
     successExplanation:
       'Production LLM serving is a multi-constraint optimization problem. `TTFT` is compute-bound ' +

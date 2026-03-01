@@ -399,10 +399,10 @@ along hidden dim, SP-sharded tensors split along sequence dim.
 
 | Model | Precision | Sim Weights | Expected | Notes |
 |-------|-----------|-------------|----------|-------|
-| LLaMA 2 7B | BF16 | ~13.5 GB | 6.74B x 2 = 13.5 GB | Exact match |
-| LLaMA 2 70B | BF16 | ~138 GB | 69B x 2 = 138 GB | Exact match |
-| LLaMA 2 7B | INT8 | ~6.7 GB | Half of BF16 | Exact match |
-| LLaMA 2 7B | INT4 | ~3.4 GB | Quarter of BF16 | Exact match |
+| LLaMA 2 7B | BF16 | ~12.6 GB | 6.74B × 2 / 1024³ = 12.6 GiB | Exact match |
+| LLaMA 2 70B | BF16 | ~128 GB | 69.0B × 2 / 1024³ = 128.5 GiB | Exact match |
+| LLaMA 2 7B | INT8 | ~6.3 GB | Half of BF16 | Exact match |
+| LLaMA 2 7B | INT4 | ~3.1 GB | Quarter of BF16 | Exact match |
 
 ### KV Cache Memory
 
@@ -418,34 +418,34 @@ Formula: `2 * num_layers * num_kv_heads * head_dim * precision_bytes * seq_len *
 
 | Model | GPU | TP | Batch | Sim TTFT | Published | Notes |
 |-------|-----|----|----|----------|-----------|-------|
-| LLaMA 3 8B | H100 x1 | 1 | 1 | ~20.8ms | -- | Analytical model baseline |
-| LLaMA 3 8B | A100 x1 | 1 | 1 | ~65.9ms | -- | 3.2x H100 (TFLOPS ratio) |
-| LLaMA 3 70B | H100 x8 | 8 | 1 | ~25.8ms | ~123ms | Sim faster (no API overhead) |
-| Mixtral 8x7B | H100 x2 | 2 | 1 | ~17ms | sub-200ms | MoE uses activeParams |
-| Qwen 2.5 7B | H100 x1 | 1 | 1 | ~19.7ms | -- | Similar to LLaMA 8B class |
-| Grok-1 314B | H200 x16 | 16 | 1 | ~15ms | -- | MoE, large TP |
+| LLaMA 3 8B | H100 x1 | 1 | 1 | ~21ms | -- | Analytical model baseline |
+| LLaMA 3 8B | A100 x1 | 1 | 1 | ~61.6ms | -- | 2.9x H100 (TFLOPS ratio) |
+| LLaMA 3 70B | H100 x8 | 8 | 1 | ~23ms | ~123ms | Sim faster (no API overhead) |
+| Mixtral 8x7B | H100 x2 | 2 | 1 | ~16.8ms | sub-200ms | MoE uses activeParams |
+| Qwen 2.5 7B | H100 x1 | 1 | 1 | ~19.8ms | -- | Similar to LLaMA 8B class |
+| Grok-1 314B | H200 x16 | 16 | 1 | ~13.2ms | -- | MoE, large TP |
 
 ### Inference Throughput
 
 | Model | GPU | TP | Batch | Sim tok/s | Published | Notes |
 |-------|-----|----|----|-----------|-----------|-------|
-| LLaMA 3 8B | H100 x1 | 1 | 128 | ~6,277 | ~12,500 (vLLM) | Physics-only, no CUDA graphs |
-| LLaMA 3 70B | H100 x8 | 8 | 64 | ~4,655 | -- | Compute-bound at high batch |
-| LLaMA 2 7B | H100 x1 | 1 | 128 | ~6,000 | -- | Bandwidth-bound |
+| LLaMA 3 8B | H100 x1 | 1 | 128 | ~6,111 | ~12,500 (vLLM) | Physics-only, no CUDA graphs |
+| LLaMA 3 70B | H100 x8 | 8 | 64 | ~4,710 | -- | Compute-bound at high batch |
+| LLaMA 2 7B | H100 x1 | 1 | 128 | ~4,307 | -- | Bandwidth-bound |
 
 ### Consumer GPU Inference
 
 | Model | GPU | Precision | Sim tok/s | Published | Source |
 |-------|-----|-----------|-----------|-----------|--------|
-| LLaMA 2 7B | RTX 4090 | BF16 | 52.2 | 50-55 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
-| LLaMA 2 7B | RTX 4090 | INT4 (GPTQ) | 126.9 | 150-194 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
-| LLaMA 3 8B | RTX 4090 | BF16 | 45.7 | 45-50 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
-| Mistral 7B | RTX 4090 | BF16 | 49.9 | 50-58 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
-| LLaMA 3 8B | RTX 4090 | INT4 (GPTQ) | 117.8 | ~150 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
-| LLaMA 2 7B | RTX 4090 | Q4_K_M | 120.3 | 125-150 | [llama.cpp benchmarks](https://github.com/ggerganov/llama.cpp) |
-| LLaMA 3 8B | RTX 4090 | Q4_K_M | 110.9 | 104-150 | [llama.cpp benchmarks](https://github.com/ggerganov/llama.cpp) |
-| LLaMA 2 7B | RTX 3090 | BF16 | 48.4 | 45-50 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
-| LLaMA 2 7B | RTX 3090 | Q4_K_M | 111.7 | 100-112 | [llama.cpp benchmarks](https://github.com/ggerganov/llama.cpp) |
+| LLaMA 2 7B | RTX 4090 | BF16 | 51.7 | 50-55 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
+| LLaMA 2 7B | RTX 4090 | INT4 (GPTQ) | 127.1 | 150-194 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
+| LLaMA 3 8B | RTX 4090 | BF16 | 45.2 | 45-50 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
+| Mistral 7B | RTX 4090 | BF16 | 49.4 | 50-58 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
+| LLaMA 3 8B | RTX 4090 | INT4 (GPTQ) | 116.1 | ~150 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
+| LLaMA 2 7B | RTX 4090 | Q4_K_M | 120.1 | 125-150 | [llama.cpp benchmarks](https://github.com/ggerganov/llama.cpp) |
+| LLaMA 3 8B | RTX 4090 | Q4_K_M | 109.3 | 104-150 | [llama.cpp benchmarks](https://github.com/ggerganov/llama.cpp) |
+| LLaMA 2 7B | RTX 3090 | BF16 | 48.0 | 45-50 | [r/LocalLLaMA](https://reddit.com/r/LocalLLaMA) |
+| LLaMA 2 7B | RTX 3090 | Q4_K_M | 111.6 | 100-112 | [llama.cpp benchmarks](https://github.com/ggerganov/llama.cpp) |
 
 INT4 (GPTQ/AWQ) undershoots published — Marlin/TRT-LLM use W4A16 kernels that
 dequantize inside the matmul at register level, avoiding the separate bandwidth
@@ -464,23 +464,23 @@ capture CUDA graphs, fused kernels, or continuous batching.
 
 | Model | GPU | Precision | TP | Sim tok/s | Published | Notes |
 |-------|-----|-----------|----|-----------|-----------|----|
-| LLaMA 2 7B | H100 SXM | BF16 | 1 | 169 | 350-400 (vLLM) | Baseline server GPU |
-| LLaMA 3 8B | H100 SXM | BF16 | 1 | 148 | 300-350 (vLLM) | |
-| LLaMA 3 70B | H100 SXM | BF16 | 8 | 155 | 900-1200 (vLLM) | TP comm overhead modeled |
-| LLaMA 2 7B | A100 80GB | BF16 | 1 | 102 | 105-125 (vLLM) | A100 coverage |
-| LLaMA 3 8B | A100 80GB | BF16 | 1 | 89 | 90-110 (vLLM) | |
-| LLaMA 2 7B | H200 SXM | BF16 | 1 | 240 | -- | H200 coverage |
-| LLaMA 3 8B | H200 SXM | BF16 | 1 | 211 | -- | |
-| LLaMA 3 70B | H200 SXM | FP8 | 1 | 52 | -- | 70B FP8 fits 141 GB |
-| LLaMA 2 7B | B200 SXM | BF16 | 1 | 385 | -- | Fastest server GPU |
+| LLaMA 2 7B | H100 SXM | BF16 | 1 | 171 | 350-400 (vLLM) | Baseline server GPU |
+| LLaMA 3 8B | H100 SXM | BF16 | 1 | 150 | 300-350 (vLLM) | |
+| LLaMA 3 70B | H100 SXM | BF16 | 8 | 138 | 900-1200 (vLLM) | TP comm overhead modeled |
+| LLaMA 2 7B | A100 80GB | BF16 | 1 | 104 | 105-125 (vLLM) | A100 coverage |
+| LLaMA 3 8B | A100 80GB | BF16 | 1 | 91 | 90-110 (vLLM) | |
+| LLaMA 2 7B | H200 SXM | BF16 | 1 | 245 | -- | H200 coverage |
+| LLaMA 3 8B | H200 SXM | BF16 | 1 | 214 | -- | |
+| LLaMA 3 70B | H200 SXM | FP8 | 1 | 53 | -- | 70B FP8 fits 141 GB |
+| LLaMA 2 7B | B200 SXM | BF16 | 1 | 391 | -- | Fastest server GPU |
 
 **Hardware ratios** (strongest tests — bandwidth ratios are physical constants):
 
 | GPU Pair | BW Ratio (theoretical) | Sim Ratio (BF16) | Sim Ratio (INT4) | Sim Ratio (FP8) |
 |----------|------------------------|-------------------|-------------------|-----------------|
-| H200 / H100 | 1.433 (4.8/3.35) | 1.424 | 1.411 | 1.428 |
-| A100 / H100 | 0.609 (2.039/3.35) | 0.604 | 0.599 | -- |
-| B200 / H100 | 2.299 (7.7/3.35) | 2.283 | 2.263 | -- |
+| H200 / H100 | 1.433 (4.8/3.35) | 1.430 | 1.425 | 1.428 |
+| A100 / H100 | 0.609 (2.039/3.35) | 0.610 | 0.612 | -- |
+| B200 / H100 | 2.299 (7.7/3.35) | 2.283 | 2.262 | -- |
 
 Ratios are stable across precisions (BF16/INT4/FP8 within ±2%), confirming
 the simulator correctly models bandwidth-bound decode.
@@ -489,10 +489,10 @@ the simulator correctly models bandwidth-bound decode.
 
 | Precision | tok/s | Speedup vs BF16 |
 |-----------|-------|-----------------|
-| BF16 | 169 | 1.00× |
-| INT8 | 267 | 1.58× |
-| FP8 | 279 | 1.65× |
-| INT4 | 399 | 2.36× |
+| BF16 | 171 | 1.00× |
+| INT8 | 272 | 1.59× |
+| FP8 | 284 | 1.66× |
+| INT4 | 419 | 2.44× |
 
 **Roofline transition**: H200/H100 ratio decreases from 1.42 (batch=1,
 BW-bound) to 1.21 (batch=128, partially compute-bound), validating the
@@ -505,17 +505,17 @@ FP8), [AMD ROCm](https://rocm.blogs.amd.com/artificial-intelligence/spec_decode_
 
 | Target | Draft | GPU | Precision | K | Sim Speedup | Published | Notes |
 |--------|-------|-----|-----------|---|-------------|-----------|-------|
-| LLaMA 70B | 1B | H200 | FP8 | 10 | 1.90x | 3.55x (TRT-LLM) | Engine optimizations not modeled |
-| LLaMA 70B | 8B | H200 | FP8 | 10 | 1.29x | 2.63x (TRT-LLM) | Larger draft reduces speedup |
-| LLaMA 3 70B | 8B | MI300X | BF16 | 8 | 1.50x | 1.5-2.0x (AMD) | Close match |
-| LLaMA 2 70B | 7B | H100 | FP8 | 5 | 1.75x | 1.5-3.0x (lit.) | K=5 sweet spot |
-| LLaMA 3 8B | 125M | H100 | BF16 | 5 | 1.81x | -- | Consumer-scale model |
-| LLaMA 2 7B | 125M | RTX 4090 | BF16 | 5 | 1.79x | -- | Consumer GPU |
+| LLaMA 70B | 1B | H200 | FP8 | 10 | 2.53x | 3.55x (TRT-LLM) | Engine optimizations not modeled |
+| LLaMA 70B | 8B | H200 | FP8 | 10 | 1.36x | 2.63x (TRT-LLM) | Larger draft reduces speedup |
+| LLaMA 3 70B | 8B | MI300X | BF16 | 8 | 1.56x | 1.5-2.0x (AMD) | Close match |
+| LLaMA 2 70B | 7B | H100 | FP8 | 5 | 1.74x | 1.5-3.0x (lit.) | K=5 sweet spot |
+| LLaMA 3 8B | 125M | H100 | BF16 | 5 | 2.41x | -- | Consumer-scale model |
+| LLaMA 2 7B | 125M | RTX 4090 | BF16 | 5 | 2.37x | -- | Consumer GPU |
 
 Key validated properties:
 - Acceptance rate monotonically increases with draft/target size ratio.
 - Optimal K is in [3, 12] range.
-- Batch degradation: speedup drops from ~2.45x (batch=1) to ~0.63x
+- Batch degradation: speedup drops from ~2.47x (batch=1) to ~0.43x
   (batch=128) for 70B+1B on H100 FP8 TP=2 -- high batch amortizes decode,
   making speculation overhead dominant.
 - MoE targets: marginal benefit (expert routing adds latency to verification).
@@ -530,7 +530,7 @@ China-export GPU variants with reduced interconnect bandwidth.
 
 | Model | Config | GPU | Sim MFU | Published | Notes |
 |-------|--------|-----|---------|-----------|-------|
-| DeepSeek V3 671B FP8 | 2048 GPUs, TP=4 PP=8 EP=32 | H800 | 44.7% | 43.7% | +1.0pp |
+| DeepSeek V3 671B FP8 | 2048 GPUs, TP=4 PP=8 EP=32 | H800 | 45.0% | 43.7% | +1.3pp |
 | DeepSeek V3 671B BF16 | Same config | H800 | ~0.87 memUtil | -- | Fits with EP activation reduction |
 
 - H800 < H100 MFU for the same config (reduced NVLink: 400 vs 900 GB/s).
@@ -543,8 +543,8 @@ China-export GPU variants with reduced interconnect bandwidth.
 ### Validated Properties
 
 - **Bandwidth efficiency**: Model-size-dependent sigmoid:
-  `0.35 + 0.50 * (1 - 1/(1 + weightGB/5))`. Tiny models: 0.35, 1B: 0.43,
-  7B: 0.72, 70B: 0.83, 405B: 0.85.
+  `0.35 + 0.50 * (1 - 1/(1 + totalGB/5))` where `totalGB` = weights + KV cache.
+  Tiny models: ~0.37, 1B: ~0.49, 7B: ~0.72, 70B: ~0.83, 405B: ~0.85.
 - **TP scaling**: Near-linear throughput improvement up to within-node TP
   (validated). Cross-node TP degrades due to inter-node bandwidth limits.
 - **Batch scaling**: Throughput scales approximately linearly with batch size.

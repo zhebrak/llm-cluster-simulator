@@ -13,18 +13,22 @@
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { GameMode, GameDifficulty, ValidationResult, TaskSetup } from '../game/types.ts';
+import type { GameMode, GameDifficulty, ValidationResult } from '../game/types.ts';
 import { getTaskById, getTasksForLevel, isTaskUnlocked } from '../game/tasks/index.ts';
 import { buildValidationContext, validateTask, captureTaskConfig, validateExpectedChanges } from '../game/validation.ts';
 import type { TaskConfigSnapshot } from '../game/validation.ts';
-import { TRAINING_DEFAULTS, INFERENCE_DEFAULTS } from '../game/defaults.ts';
+import { GAME_STORAGE_KEY, PRE_GAME_CONFIG_KEY, CONFIG_STORAGE_KEY } from '../game/constants.ts';
+import { applySetupToConfig } from '../game/setup.ts';
 import { useConfigStore } from './config.ts';
-import type { TrainingConfig } from './config.ts';
 import { useSimulationStore } from './simulation.ts';
 
-const GAME_STORAGE_KEY = 'llm-sim-game';
-const PRE_GAME_CONFIG_KEY = 'llm-sim-config-pre-game';
-const CONFIG_STORAGE_KEY = 'llm-sim-config';
+// Lazy reference to RPG store to avoid circular imports (rpg.ts imports game.ts)
+let _rpgStoreRef: { getState: () => { active: boolean; exit: () => void } } | null = null;
+
+/** Called by rpg.ts after it creates its store, to register for mutual exclusion. */
+export function _registerRPGStore(store: typeof _rpgStoreRef): void {
+  _rpgStoreRef = store;
+}
 
 interface LastTaskState {
   mode: GameMode;
@@ -123,6 +127,23 @@ function saveCurrentTaskState(state: GameState): void {
   };
 }
 
+/** Load task fields — restore from saved state if completed, otherwise fresh defaults */
+function loadTaskFields(state: GameState, taskId: string, levelProgress: string[]): void {
+  const saved = levelProgress.includes(taskId) ? state.taskStates[taskId] : undefined;
+  if (saved) {
+    state.hintsRevealed = saved.hintsRevealed;
+    state.attempts = saved.attempts;
+    state.lastValidation = saved.lastValidation;
+    state.successDismissed = true;
+  } else {
+    state.hintsRevealed = 0;
+    state.attempts = 0;
+    state.lastValidation = null;
+    state.successDismissed = false;
+  }
+  state.lastValidatedRunCounter = 0;
+}
+
 /**
  * Persist game state to localStorage (excludes lastValidation).
  */
@@ -183,153 +204,17 @@ function restoreConfigSnapshot(snapshot: string | null): void {
   } catch { /* ignore */ }
 }
 
-const VALID_STRATEGY_TYPES: Set<string> = new Set([
-  'ddp', 'fsdp', 'zero-1', 'zero-3', 'auto',
-  'fsdp-tp', 'zero1-tp',
-  'ddp-tp-pp', 'zero1-tp-pp', 'fsdp-tp-pp',
-]);
-
 /**
- * Reset config store to naive training defaults.
- * FP32, no AC, no FA — beginner tasks need zero overrides.
- */
-function resetToTrainingDefaults(configStore: ReturnType<typeof useConfigStore.getState>): void {
-  configStore.setPrecision(TRAINING_DEFAULTS.mixedPrecision);
-  configStore.setSequenceLength(TRAINING_DEFAULTS.sequenceLength);
-  configStore.setTrainingParams({
-    activationCheckpointing: TRAINING_DEFAULTS.activationCheckpointing,
-    checkpointingGranularity: TRAINING_DEFAULTS.checkpointingGranularity,
-    flashAttention: TRAINING_DEFAULTS.flashAttention,
-    globalBatchSize: TRAINING_DEFAULTS.globalBatchSize,
-    microBatchSize: TRAINING_DEFAULTS.microBatchSize,
-    sequenceParallel: TRAINING_DEFAULTS.sequenceParallel,
-    finetuningMethod: TRAINING_DEFAULTS.finetuningMethod,
-    loraRank: TRAINING_DEFAULTS.loraRank,
-    loraTargetModules: TRAINING_DEFAULTS.loraTargetModules,
-  });
-  configStore.setStrategyParams({
-    tpDegree: TRAINING_DEFAULTS.tpDegree,
-    ppDegree: TRAINING_DEFAULTS.ppDegree,
-    epDegree: TRAINING_DEFAULTS.epDegree,
-    cpDegree: TRAINING_DEFAULTS.cpDegree,
-    pipelineSchedule: TRAINING_DEFAULTS.pipelineSchedule,
-    interleavedStages: TRAINING_DEFAULTS.interleavedStages,
-  });
-}
-
-/**
- * Reset config store to reasonable inference defaults.
- * BF16, FA/PA on, no batching or advanced features.
- */
-function resetToInferenceDefaults(configStore: ReturnType<typeof useConfigStore.getState>): void {
-  configStore.setInferenceParams({
-    batchSize: INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: INFERENCE_DEFAULTS.outputSeqLen,
-    weightPrecision: INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: INFERENCE_DEFAULTS.kvCachePrecision,
-    flashAttention: INFERENCE_DEFAULTS.flashAttention,
-    pagedAttention: INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: INFERENCE_DEFAULTS.continuousBatching,
-    tensorParallel: INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: INFERENCE_DEFAULTS.expertParallel,
-    speculativeDecoding: INFERENCE_DEFAULTS.speculativeDecoding,
-  });
-}
-
-/**
- * Apply task-specific overrides from TaskSetup onto config store.
- * Only fields explicitly set in the setup (not undefined) are applied.
- */
-function applyTaskOverrides(setup: TaskSetup, configStore: ReturnType<typeof useConfigStore.getState>, mode: 'training' | 'inference'): void {
-  if (mode === 'training') {
-    if (setup.mixedPrecision !== undefined) configStore.setPrecision(setup.mixedPrecision);
-    if (setup.sequenceLength !== undefined) configStore.setSequenceLength(setup.sequenceLength);
-
-    const trainingOverrides: Partial<TrainingConfig> = {};
-    if (setup.activationCheckpointing !== undefined) trainingOverrides.activationCheckpointing = setup.activationCheckpointing;
-    if (setup.checkpointingGranularity !== undefined) trainingOverrides.checkpointingGranularity = setup.checkpointingGranularity;
-    if (setup.flashAttention !== undefined) trainingOverrides.flashAttention = setup.flashAttention;
-    if (setup.globalBatchSize !== undefined) trainingOverrides.globalBatchSize = setup.globalBatchSize;
-    if (setup.microBatchSize !== undefined) trainingOverrides.microBatchSize = setup.microBatchSize;
-    if (setup.sequenceParallel !== undefined) trainingOverrides.sequenceParallel = setup.sequenceParallel;
-    if (setup.finetuningMethod !== undefined) trainingOverrides.finetuningMethod = setup.finetuningMethod;
-    if (setup.loraRank !== undefined) trainingOverrides.loraRank = setup.loraRank;
-    if (setup.loraTargetModules !== undefined) trainingOverrides.loraTargetModules = setup.loraTargetModules;
-    if (Object.keys(trainingOverrides).length > 0) configStore.setTrainingParams(trainingOverrides);
-
-    const strategyOverrides: Partial<TrainingConfig> = {};
-    if (setup.tpDegree !== undefined) strategyOverrides.tpDegree = setup.tpDegree;
-    if (setup.ppDegree !== undefined) strategyOverrides.ppDegree = setup.ppDegree;
-    if (setup.epDegree !== undefined) strategyOverrides.epDegree = setup.epDegree;
-    if (setup.cpDegree !== undefined) strategyOverrides.cpDegree = setup.cpDegree;
-    if (setup.pipelineSchedule !== undefined) strategyOverrides.pipelineSchedule = setup.pipelineSchedule;
-    if (setup.interleavedStages !== undefined) strategyOverrides.interleavedStages = setup.interleavedStages;
-    if (Object.keys(strategyOverrides).length > 0) configStore.setStrategyParams(strategyOverrides);
-  } else {
-    const inferenceOverrides: Record<string, unknown> = {};
-    if (setup.weightPrecision !== undefined) inferenceOverrides.weightPrecision = setup.weightPrecision;
-    if (setup.kvCachePrecision !== undefined) inferenceOverrides.kvCachePrecision = setup.kvCachePrecision;
-    if (setup.batchSize !== undefined) inferenceOverrides.batchSize = setup.batchSize;
-    if (setup.inputSeqLen !== undefined) inferenceOverrides.inputSeqLen = setup.inputSeqLen;
-    if (setup.outputSeqLen !== undefined) inferenceOverrides.outputSeqLen = setup.outputSeqLen;
-    if (setup.tensorParallel !== undefined) inferenceOverrides.tensorParallel = setup.tensorParallel;
-    if (setup.expertParallel !== undefined) inferenceOverrides.expertParallel = setup.expertParallel;
-    if (setup.pagedAttention !== undefined) inferenceOverrides.pagedAttention = setup.pagedAttention;
-    if (setup.continuousBatching !== undefined) inferenceOverrides.continuousBatching = setup.continuousBatching;
-    // Note: TaskSetup uses 'speculativeDecoding', simulation config uses 'speculativeEnabled'.
-    // The store handles the mapping at simulation time.
-    if (setup.speculativeDecoding !== undefined) inferenceOverrides.speculativeDecoding = setup.speculativeDecoding;
-    if (setup.numSpeculativeTokens !== undefined) inferenceOverrides.numSpeculativeTokens = setup.numSpeculativeTokens;
-    if (setup.acceptanceRate !== undefined) inferenceOverrides.acceptanceRate = setup.acceptanceRate;
-    if (setup.flashAttention !== undefined) inferenceOverrides.flashAttention = setup.flashAttention;
-    if (Object.keys(inferenceOverrides).length > 0) configStore.setInferenceParams(inferenceOverrides);
-
-    // Draft model requires separate store action (resolves ModelSpec from ID)
-    if (setup.draftModelId !== undefined) {
-      configStore.setDraftModel(setup.draftModelId);
-    }
-  }
-}
-
-/**
- * Apply task setup to config store: reset to deterministic base defaults,
- * then apply task-specific overrides. This ensures every task starts from
- * a known state regardless of user's prior config.
+ * Apply task setup to config store using shared helpers, then capture
+ * config snapshot for expected-change validation.
  */
 function applyTaskSetup(taskId: string): void {
   const task = getTaskById(taskId);
   if (!task) return;
 
-  const configStore = useConfigStore.getState();
-  const { setup } = task;
+  applySetupToConfig(task.setup, task.mode);
 
-  // Step 1: Switch mode if needed
-  if (configStore.mode !== task.mode) {
-    configStore.setMode(task.mode);
-  }
-
-  // Step 2: Set model and cluster
-  configStore.setModel(setup.modelId);
-  const numGPUs = setup.numGPUs ?? 1;
-  const gpusPerNode = setup.gpusPerNode ?? Math.min(numGPUs, 8);
-  configStore.setCustomCluster(setup.gpuId, numGPUs, gpusPerNode);
-  configStore.setPricePerGPUHour(null);
-
-  // Step 3: Set strategy (training only), then reset to base defaults
-  if (task.mode === 'training') {
-    if (setup.strategyType && VALID_STRATEGY_TYPES.has(setup.strategyType)) {
-      configStore.setStrategy(setup.strategyType as TrainingConfig['strategyType']);
-    }
-    resetToTrainingDefaults(configStore);
-  } else {
-    resetToInferenceDefaults(configStore);
-  }
-
-  // Step 4: Apply task-specific overrides
-  applyTaskOverrides(setup, configStore, task.mode);
-
-  // Step 5: Capture config snapshot for expected-change validation
+  // Capture config snapshot for expected-change validation
   const snapshot = captureTaskConfig();
   useGameStore.setState(state => {
     state.taskConfigSnapshot = snapshot;
@@ -391,6 +276,11 @@ export const useGameStore = create<GameState>()(
     },
 
     enter: () => {
+      // Mutual exclusion: soft-exit RPG mode if active
+      if (_rpgStoreRef?.getState().active) {
+        _rpgStoreRef.getState().exit();
+      }
+
       const snapshot = snapshotConfig();
       // Also write to crash-recovery key
       if (snapshot) {
@@ -444,17 +334,12 @@ export const useGameStore = create<GameState>()(
           ? { mode: current.activeMode, difficulty: current.activeDifficulty, taskId: '', hintsRevealed: 0, attempts: 0 }
           : null;
 
-      // Restore original config
-      restoreConfigSnapshot(savedConfigSnapshot);
-      // Clean up crash-recovery key
-      try {
-        localStorage.removeItem(PRE_GAME_CONFIG_KEY);
-      } catch { /* ignore */ }
+      // Race guard: deactivate FIRST so simulation subscriber ignores late-firing runs
       set(state => {
         saveCurrentTaskState(state);
+        state.active = false;
         state.menuOpen = false;
         state.showLevelComplete = false;
-        state.active = false;
         state.activeMode = null;
         state.activeDifficulty = null;
         state.activeTaskId = null;
@@ -468,9 +353,18 @@ export const useGameStore = create<GameState>()(
         state.lastTaskState = lastTask;
         state.previousTaskState = null;
       });
+
+      // Clean up crash-recovery key
+      try {
+        localStorage.removeItem(PRE_GAME_CONFIG_KEY);
+      } catch { /* ignore */ }
+
+      // Restore original config via config store (no page reload)
+      if (savedConfigSnapshot) {
+        useConfigStore.getState().restoreFromSnapshot(savedConfigSnapshot);
+      }
+
       persistGameState(get());
-      // Reload to pick up restored config
-      window.location.reload();
     },
 
     exitTask: () => {
@@ -528,29 +422,12 @@ export const useGameStore = create<GameState>()(
       const key = levelKey(task.mode, task.difficulty);
       if (!isTaskUnlocked(task, progress[key] ?? [])) return;
 
-      // Check if incoming task is already completed and has saved state
-      const completed = progress[key]?.includes(taskId) ?? false;
-
       set(state => {
         saveCurrentTaskState(state);
         state.menuOpen = false;
         state.activeTaskId = taskId;
         state.previousTaskState = null;  // chose a different task
-
-        const saved = completed ? state.taskStates[taskId] : undefined;
-        if (saved) {
-          // Restore saved state for completed task
-          state.hintsRevealed = saved.hintsRevealed;
-          state.attempts = saved.attempts;
-          state.lastValidation = saved.lastValidation;
-          state.successDismissed = true;  // suppress auto-modal on revisit
-        } else {
-          state.hintsRevealed = 0;
-          state.attempts = 0;
-          state.lastValidation = null;
-          state.successDismissed = false;
-        }
-        state.lastValidatedRunCounter = 0;
+        loadTaskFields(state, taskId, progress[key] ?? []);
       });
 
       // Apply task setup to config
@@ -616,15 +493,10 @@ export const useGameStore = create<GameState>()(
           state.progress[key].push(activeTaskId);
         }
 
-        state.successDismissed = false;
-
         if (nextTask) {
           // Advance to next task
           state.activeTaskId = nextTask.id;
-          state.hintsRevealed = 0;
-          state.attempts = 0;
-          state.lastValidation = null;
-          state.lastValidatedRunCounter = 0;
+          loadTaskFields(state, nextTask.id, state.progress[key] ?? []);
         } else {
           // Level complete — show celebration
           state.activeTaskId = null;

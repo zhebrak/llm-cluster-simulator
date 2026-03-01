@@ -107,8 +107,8 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     ],
     hints: [
       'Set EP in the strategy configuration. EP must divide the DP degree. Higher EP means each GPU holds fewer experts, reducing memory and per-GPU compute.',
-      'DeepSeek V3 has 61 layers (a prime number), which makes PP difficult. Focus on TP + EP within `FSDP`-TP.',
-      'Try `FP8` mixed precision — DeepSeek V3 was designed for `FP8` training with Transformer Engine. Also try a 3D strategy (fsdp-tp-pp) if memory is tight.',
+      'DeepSeek V3 has 61 layers (a prime number), which makes `PP` difficult. Focus on `TP` + `EP` within `FSDP-TP`.',
+      'Try `FP8` mixed precision — DeepSeek V3 was designed for `FP8` training with Transformer Engine. Also try a 3D strategy (`fsdp-tp-pp`) if memory is tight.',
     ],
     successExplanation:
       'Expert Parallelism is essential for large MoE models. Without `EP`, every GPU ' +
@@ -143,7 +143,8 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       'communicates KV blocks via {{ring-attention|ring attention}} or all-gather. Your challenge: ' +
       'LLaMA 3.1 405B on 512 H100s with `TP=8` and `PP=8` at a 32K sequence length OOMs — ' +
       'the activation memory at 32K tokens is too large even with full activation ' +
-      'checkpointing. Enable CP to split the sequence and make it fit.',
+      'checkpointing. Enable CP to split the sequence, make it fit, and achieve ' +
+      'reasonable training throughput.',
     setup: {
       modelId: 'llama3-405b',
       gpuId: 'h100-sxm',
@@ -159,6 +160,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
+      { field: 'mfu', operator: '>', value: 0.25, label: 'MFU > 25%' },
     ],
     expectedChanges: [
       { field: 'cpDegree', check: 'increased', label: 'Increased CP degree' },
@@ -167,7 +169,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     ],
     hints: [
       'The default config OOMs because activation memory at 32K tokens is enormous even with full activation checkpointing. Look for a parallelism dimension that splits the sequence across GPUs to reduce per-GPU activation memory.',
-      'Context Parallelism splits the sequence dimension. `TP × PP × CP × DP` must not exceed total GPUs — calculate the resulting DP after adding CP. CP is only effective when seqLength/CP >= 8192.',
+      'Context Parallelism splits the sequence dimension. `TP × PP × CP × DP` must not exceed total GPUs — calculate the resulting DP after adding CP. More CP means less DP, which means more gradient accumulation steps per batch — and more micro-batches reduce the pipeline bubble fraction. CP is only effective when seqLength/CP >= 8192.',
       'Try adding CP. Ring attention (the default implementation) overlaps KV transfer with attention computation, making CP nearly free when compute dominates.',
     ],
     successExplanation:
@@ -177,7 +179,11 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       '[LLaMA 3 (Meta AI, 2024)](https://arxiv.org/abs/2407.21783) training.\n\n[Ring Attention (Liu et al., 2023)](https://arxiv.org/abs/2310.01889) cleverly pipelines KV block transfers with ' +
       'attention computation, making `CP` nearly free when compute dominates. The key ' +
       'insight: `CP` is only useful when sequence length is long enough that activation ' +
-      'memory is the bottleneck — for short sequences, it just adds overhead.',
+      'memory is the bottleneck — for short sequences, it just adds overhead.\n\n' +
+      'A subtler effect: more `CP` means less `DP` (since `TP × PP × CP × DP = totalGPUs`), ' +
+      'which increases gradient accumulation steps per batch. More micro-batches shrink the ' +
+      'pipeline bubble fraction `(PP-1)/(PP-1+m)`, improving throughput. With `PP=8`, this ' +
+      'effect is significant.',
   },
 
   // -----------------------------------------------------------------------
@@ -201,11 +207,9 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       '{{allgather|AllGather}} for {{fsdp|FSDP}}, point-to-point for `PP`. The goal is to hide as much ' +
       'communication as possible behind computation. The compute-to-communication ratio (C/T) ' +
       'determines how well this works.\n\n' +
-      'On a 64-GPU H100 cluster with LLaMA 3.3 70B, the current config uses `TP=8`. With `TP=8`, ' +
-      'each GPU computes only 1/8 of each layer — small matmuls that finish quickly, leaving ' +
-      '`TP` `AllReduce` communication exposed. The C/T ratio is poor.\n\n' +
-      'Reduce the `TP` degree to give each GPU more compute per layer, improving C/T. ' +
-      'Push `MFU` above 40%.',
+      'On a 64-GPU H100 cluster with LLaMA 3.3 70B, the current config uses `TP=4`. ' +
+      'Run it and observe the `MFU`. The communication overhead is eating into training efficiency. ' +
+      'Adjust the `TP` degree to improve the C/T ratio and push `MFU` above 42%.',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'h100-sxm',
@@ -214,32 +218,31 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       mixedPrecision: 'bf16',
       flashAttention: true,
       activationCheckpointing: true,
-      tpDegree: 8,
+      tpDegree: 4,
       globalBatchSize: 128,
       sequenceParallel: true,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'No OOM' },
-      { field: 'mfu', operator: '>', value: 0.40, label: 'MFU > 40%' },
+      { field: 'mfu', operator: '>', value: 0.42, label: 'MFU > 42%' },
     ],
     expectedChanges: [
-      { field: 'tpDegree', check: 'decreased', label: 'Decreased TP degree' },
+      { field: 'tpDegree', check: 'changed', label: 'Changed TP degree' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      '`TP=8` splits each layer into tiny per-GPU matmuls. Reducing TP gives each GPU more compute per layer, improving the compute-to-communication ratio.',
-      'Lower TP means more memory per GPU but also more DP ranks for throughput scaling. Find the TP that balances memory and C/T.',
+      'Each TP rank computes only 1/TP of each layer. Higher TP means smaller matmuls and more exposed communication. Lower TP means larger matmuls that can better hide communication — but uses more memory per GPU.',
+      'Think about the extreme cases: at `TP=1`, there is zero TP communication but each GPU must hold more of the model. At `TP=8`, communication dominates. Where is the best balance for this model and cluster?',
     ],
     successExplanation:
       'Communication overhead is the central cost of distributed training. The key ' +
       'lever is the compute-to-communication ratio (C/T): when compute per layer is ' +
       'much larger than communication per layer, the GPU can overlap transfers behind ' +
-      'matrix multiplications.\n\nWith `TP=8`, each GPU computes only 1/8 of each layer — ' +
-      'the matmuls are small and finish before communication, leaving `AllReduce` exposed. ' +
-      'Reducing `TP` gives each GPU larger matmuls that run long enough to hide ' +
-      'the `TP` `AllReduce` behind useful work. The tradeoff is more memory per GPU, which ' +
-      '`FSDP` can help manage.',
+      'matrix multiplications.\n\nEach TP degree splits layers into smaller per-GPU matmuls ' +
+      'while TP `AllReduce` volume stays roughly constant. Reducing `TP` gives each GPU ' +
+      'larger matmuls that run long enough to hide the communication behind useful work. ' +
+      'The tradeoff is more memory per GPU, which `FSDP` can help manage.',
   },
 
   // -----------------------------------------------------------------------
@@ -351,7 +354,7 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       'Enable activation checkpointing if memory is still tight. `QLoRA` saves weight and optimizer memory, but activations are the same size as full fine-tuning.',
     ],
     successExplanation:
-      '[QLoRA (Dettmers et al., 2023)](https://arxiv.org/abs/2305.14314) combines two ideas: 4-bit NormalFloat quantization for the frozen base ' +
+      '[QLoRA (Dettmers et al., 2023)](https://arxiv.org/abs/2305.14314) combines two ideas: 4-bit NormalFloat {{quantization}} for the frozen base ' +
       'model and `LoRA` adapters trained in full precision. The base model consumes ' +
       '~0.515 bytes per parameter (`NF4` + quantization metadata), down from 2 bytes ' +
       'in `BF16`. For 70B parameters, that is ~36 GB total or ~9 GB per GPU with `FSDP` ' +
@@ -437,24 +440,22 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     difficulty: 'advanced',
     order: 7,
     title: 'Nemotron 340B',
-    concept: 'Large-scale pipeline efficiency',
+    concept: 'Reproducing a published large-scale config',
     learningObjectives: [
-      'Understand VP=8 with PP=12 achieves finest granularity (1 layer per virtual stage)',
-      'Know bubble drops from ~58% (no interleaving) to ~10% with VP=8',
-      'Understand selective AC: keeps MLP activations (expensive), discards attention activations (cheap with FA)',
-      'Recognize the memory cost of VP: more in-flight microbatches consume activation memory',
+      'Apply TP, PP, interleaved scheduling, and selective AC simultaneously to match a published config',
+      'Understand v=8 with PP=12 achieves finest granularity (1 layer per virtual stage)',
+      'Understand selective AC: keep MLP activations (expensive to recompute), discard attention activations (cheap with FA)',
+      'Recognize the memory tradeoff: higher v means more in-flight microbatches, selective AC partially offsets this',
     ],
     briefing:
       'NVIDIA trained Nemotron-4 340B on 6144 H100 GPUs and published 41-42% `MFU`. ' +
-      'A critical ingredient was {{interleaved-1f1b|interleaved pipeline parallelism}} with {{virtual-stages|virtual stages}}. ' +
-      'Standard `1F1B` has a {{pipeline-bubble|bubble}} fraction of `(PP-1)/(PP-1+m)`. Interleaving assigns ' +
-      'multiple virtual stages per device, reducing the effective `PP` and shrinking the ' +
-      'bubble dramatically. Nemotron used `PP=12` with `VP=8` — `96/12/8=1` layer per virtual stage, the finest possible ' +
-      'granularity. Your job: configure 128 H100s with the right interleaving to ' +
-      'achieve strong `MFU`. Think about how virtual stages trade bubble for memory.' +
-      '\n\nNemotron used selective activation checkpointing — a lighter form that keeps MLP activations ' +
-      '(expensive to recompute) and only discards attention activations (cheap to recompute with Flash Attention). ' +
-      'This preserves more throughput than full checkpointing while still providing significant memory savings.',
+      'The published config used `TP=8, PP=12` with interleaved `1F1B` scheduling and `v=8` — giving ' +
+      'the finest possible pipeline granularity (1 layer per virtual stage). They also used ' +
+      '{{selective-checkpointing|selective activation checkpointing}}: instead of recomputing everything in the backward pass, ' +
+      'only attention activations are discarded (cheap to recompute with {{flash-attention|Flash Attention}}) while MLP ' +
+      'activations are kept (expensive to recompute). Your challenge: configure 128 H100s to reproduce ' +
+      'this result. You will need to set up the parallelism dimensions, pipeline schedule, and ' +
+      'checkpointing strategy to push `MFU` above the target.',
     setup: {
       modelId: 'nemotron-4-340b',
       gpuId: 'h100-sxm',
@@ -470,25 +471,27 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
       { field: 'mfu', operator: '>', value: 0.40, label: 'MFU > 40%' },
     ],
     expectedChanges: [
-      { field: 'pipelineSchedule', check: 'changed', label: 'Changed pipeline schedule' },
+      { field: 'checkpointingGranularity', check: 'changed', label: 'Changed checkpointing granularity' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'Nemotron has 96 layers. The standard `1F1B` bubble at high PP is enormous. Interleaved scheduling assigns virtual stages to shrink the bubble by a factor of `v` — look for it in the pipeline schedule selector. Watch the pipeline timeline to see how virtual stages change the schedule.',
-      'Set the VP parameter. VP must evenly divide the layers per physical stage. Higher VP = smaller bubble but more in-flight microbatches consuming activation memory.',
-      'Fill each node with TP and use selective activation checkpointing. The published config also uses sequence parallelism. Try VP values that give fine-grained virtual stages.',
+      'The published config: `TP=8, PP=12` with interleaved `1F1B` and `v=8`. Nemotron has 96 layers — `96/12/8 = 1` layer per virtual stage.',
+      'Full activation checkpointing recomputes everything in the backward pass, including expensive MLP intermediates. Selective checkpointing keeps those and only discards attention activations — which Flash Attention makes cheap to recompute. Look for the checkpointing granularity selector.',
+      'Higher `v` shrinks the pipeline bubble but increases activation memory from more in-flight microbatches. Selective checkpointing helps offset this memory cost.',
     ],
     successExplanation:
-      'Virtual pipeline stages are one of the most powerful optimizations for pipeline ' +
-      'parallelism ([Megatron-LM (Narayanan et al., 2021)](https://arxiv.org/abs/2104.04473)). By splitting each device\'s layers into v virtual stages, the ' +
-      'effective pipeline depth becomes `PP*v` but each micro-batch passes through ' +
-      'stages faster, reducing the warmup/cooldown phases. The bubble fraction changes ' +
-      'from `(PP-1)/(PP-1+m)` to `(PP-1)/(PP-1+m×v)`. For Nemotron: `PP=12`, `VP=8`, m ' +
-      '(micro-batches) around 8 — bubble drops from ~58% (no interleaving) to ~10%.\n\n' +
-      'The cost: with v virtual stages per device, peak activation memory depends on the ' +
-      'interplay between shorter warmup phases and multiple model chunks. Activation checkpointing ' +
-      'is essential to keep memory manageable with high v.',
+      'Nemotron-4 340B ([NVIDIA, 2024](https://arxiv.org/abs/2402.16819)) combined several techniques to achieve 41-42% `MFU` at scale. ' +
+      '`PP=12` with `v=8` gives the finest interleaving granularity — each virtual stage is just 1 layer, ' +
+      'reducing the pipeline bubble from ~58% (no interleaving) to ~10%.\n\n' +
+      'Selective activation checkpointing was equally important. Full checkpointing recomputes all ' +
+      'activations in the backward pass, but MLP intermediates dominate compute in large models. ' +
+      'Selective checkpointing keeps MLP activations (expensive to recompute) and only discards ' +
+      'attention activations (cheap with Flash Attention). This recovers significant throughput versus ' +
+      'full checkpointing while still providing enough memory savings to support the high `v`.\n\n' +
+      'The combination is powerful: interleaving needs more activation memory (more in-flight microbatches), ' +
+      'and selective checkpointing uses more memory than full — but together they fit because the memory ' +
+      'savings from selective are still substantial, and the throughput gains from both compound.',
   },
 
   // -----------------------------------------------------------------------
@@ -603,8 +606,8 @@ export const TRAINING_ADVANCED_TASKS: GameTask[] = [
     ],
     hints: [
       'Start with `TP=8` (one node), then choose PP. 405B has 126 layers — pick a PP that divides the layers evenly. Then calculate the resulting DP from `TP × PP × DP = totalGPUs`.',
-      'Interleaved `1F1B` with virtual stages is critical for pipeline efficiency. Experiment with VP values — higher VP shrinks the bubble but uses more activation memory.',
-      'Enable sequence parallelism, {{selective-checkpointing|selective activation checkpointing}}, and Flash Attention. For 405B, every GB of memory savings counts.',
+      'Interleaved `1F1B` with virtual stages is critical for pipeline efficiency. Experiment with `v` values — higher `v` shrinks the bubble but uses more activation memory.',
+      'Enable sequence parallelism, selective activation checkpointing, and Flash Attention. For 405B, every GB of memory savings counts.',
     ],
     successExplanation:
       'Training 405B on 512 GPUs is a constrained optimization problem. With `TP=8` ' +
