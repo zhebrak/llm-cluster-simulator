@@ -47,7 +47,7 @@ export {
   getInterconnect,
   getIntraNodeInterconnect,
   getNvSwitchSpec,
-  getEffectiveBandwidth,
+  getCollectiveBandwidth,
 } from './interconnect.ts';
 
 // Topology utilities

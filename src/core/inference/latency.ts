@@ -24,6 +24,17 @@ import type {
 import { getPrecisionBytes, totalKVCacheMemory } from './kv-cache.ts';
 import { modelWeightsMemory, calculateMemoryFromConfig } from './memory.ts';
 import { getMatmulSaturationFactor, getMemoryBandwidthScaling } from '../hardware/gpu.ts';
+import { getIntraNodeInterconnect, getCollectiveBandwidth } from '../hardware/interconnect.ts';
+
+/** Get inference TP comm parameters for a GPU.
+ * Correctly resolves AMD Infinity Fabric and NVSwitch-less NVLink meshes. */
+function getInferenceCommConfig(gpu: GPUSpec): { bandwidthGBps: number; isHighSpeed: boolean } {
+  const ic = getIntraNodeInterconnect(gpu);
+  return {
+    bandwidthGBps: getCollectiveBandwidth(ic),
+    isHighSpeed: ic.type === 'nvlink' || ic.type === 'nvswitch',
+  };
+}
 
 let _prefillResidual = 0.40;
 export function getPrefillResidual(): number { return _prefillResidual; }
@@ -44,6 +55,13 @@ export function setNvlinkPerRoundMs(v: number) { _nvlinkPerRoundMs = v; }
 let _pciePerRoundMs = 0.015;    // 15us per tree round on PCIe
 export function getPciePerRoundMs(): number { return _pciePerRoundMs; }
 export function setPciePerRoundMs(v: number) { _pciePerRoundMs = v; }
+
+/** Per-round AllReduce latency on InfiniBand (ms).
+ * 25us per tree round — calibrated to match training model's PER_COLLECTIVE_OVERHEAD_MS (50us)
+ * for N=2 nodes (2 tree rounds × 25us = 50us). Scales with node count. */
+let _ibPerRoundMs = 0.025;      // 25us per tree round on IB
+export function getIbPerRoundMs(): number { return _ibPerRoundMs; }
+export function setIbPerRoundMs(v: number) { _ibPerRoundMs = v; }
 
 // TP AllReduce BW utilization (0.80 from NCCL profiling)
 let _tpCommEfficiency = 0.80;
@@ -644,19 +662,49 @@ export function calculateLatencyWithTP(
   epDegree: number = 1,
   kvCachePrecision?: InferencePrecision,
   flashAttention: boolean = true,
+  gpusPerNode?: number,
+  interNodeBandwidthGBps?: number,
 ): LatencyMetrics {
   const bytes = getPrecisionBytes(precision);
   const commBytes = Math.max(2, bytes); // activations always communicated in ≥bf16
-  const commBandwidthGBps = gpu.nvlinkBandwidthGBps || gpu.pcieBandwidthGBps;
-  const commBandwidthBps = commBandwidthGBps * 1e9;
   const ep = Math.max(1, epDegree);
 
-  // Tree-round alpha: per-collective latency scales with TP degree
-  const isNvlink = gpu.nvlinkBandwidthGBps > 0;
-  const numRounds = tpDegree > 1 ? 2 * Math.ceil(Math.log2(tpDegree)) : 0;
-  const alphaPerCollective = isNvlink
-    ? _nvlinkPerRoundMs * numRounds
-    : _pciePerRoundMs * numRounds;
+  // Cross-node TP: hierarchical AllReduce when TP evenly spans nodes
+  const crossesNodes = gpusPerNode !== undefined
+    && interNodeBandwidthGBps !== undefined
+    && tpDegree > gpusPerNode
+    && tpDegree % gpusPerNode === 0;
+
+  let commBandwidthGBps: number;
+  let alphaPerCollective: number;
+
+  const commConfig = getInferenceCommConfig(gpu);
+
+  if (crossesNodes) {
+    // Bandwidth: hierarchical RS(intra-node) + AR(IB) + AG(intra-node)
+    const G = gpusPerNode!;
+    const N = Math.ceil(tpDegree / G);
+    const intraNodeBW = commConfig.bandwidthGBps;
+    const ibBW = interNodeBandwidthGBps!;
+    commBandwidthGBps = ((tpDegree - 1) / tpDegree)
+      / ((G - 1) / G / intraNodeBW + (N - 1) / N / ibBW);
+
+    // Alpha: three phases, each using tree-round model
+    // RS + AG: 2 × 2*ceil(log2(G)) intra-node rounds
+    // AR:      2*ceil(log2(N)) IB rounds
+    const intraNodeRounds = 2 * 2 * Math.ceil(Math.log2(G));
+    const ibRounds = 2 * Math.ceil(Math.log2(N));
+    alphaPerCollective = (commConfig.isHighSpeed ? _nvlinkPerRoundMs : _pciePerRoundMs) * intraNodeRounds
+      + _ibPerRoundMs * ibRounds;
+  } else {
+    commBandwidthGBps = commConfig.bandwidthGBps;
+    const numRounds = tpDegree > 1 ? 2 * Math.ceil(Math.log2(tpDegree)) : 0;
+    alphaPerCollective = commConfig.isHighSpeed
+      ? _nvlinkPerRoundMs * numRounds
+      : _pciePerRoundMs * numRounds;
+  }
+
+  const commBandwidthBps = commBandwidthGBps * 1e9;
 
   // 2 AllReduces per dense layer (attention + MLP output), 1 per MoE layer with EP
   const numMoELayers = model.numMoELayers ?? 0;
@@ -865,12 +913,14 @@ export function calculateMetricsFromConfig(config: InferenceConfig): {
   const { modelSpec, gpu, batchSize, inputSeqLen, outputSeqLen, weightPrecision } = config;
   const kvPrec = config.kvCachePrecision ?? weightPrecision;
   const ep = config.expertParallel ?? 1;
+  const gpn = config.clusterConfig?.gpusPerNode;
+  const ibBW = config.clusterConfig?.interNodeBandwidthGBps;
 
   if ((config.tensorParallel && config.tensorParallel > 1) || ep > 1) {
     const tp = config.tensorParallel ?? 1;
     const latency = calculateLatencyWithTP(
       modelSpec, inputSeqLen, outputSeqLen, batchSize, gpu, tp, weightPrecision, ep, kvPrec,
-      config.flashAttention,
+      config.flashAttention, gpn, ibBW,
     );
 
     // Recalculate throughput and utilization with TP
@@ -935,9 +985,11 @@ export function calculateContinuousBatchingMetrics(
   const effectiveTpot = baseTpot * (1 + schedulingOverhead);
 
   // Batch=1 TTFT (true single-request prefill time)
+  const gpn = config.clusterConfig?.gpusPerNode;
+  const ibBW = config.clusterConfig?.interNodeBandwidthGBps;
   let batch1TTFT: number;
   if (tp > 1 || ep > 1) {
-    batch1TTFT = calculateLatencyWithTP(modelSpec, inputSeqLen, outputSeqLen, 1, gpu, tp, weightPrecision, ep, undefined, config.flashAttention).ttft;
+    batch1TTFT = calculateLatencyWithTP(modelSpec, inputSeqLen, outputSeqLen, 1, gpu, tp, weightPrecision, ep, undefined, config.flashAttention, gpn, ibBW).ttft;
   } else {
     batch1TTFT = estimateTTFT(modelSpec, inputSeqLen, gpu, weightPrecision, 1, config.flashAttention);
   }
@@ -981,6 +1033,7 @@ export function resetInferenceLatencyParams(): void {
   _decodeSamplingOverheadMs = 0.03;
   _nvlinkPerRoundMs = 0.005;
   _pciePerRoundMs = 0.015;
+  _ibPerRoundMs = 0.025;
   _tpCommEfficiency = 0.80;
   _epPrefillOverlap = 0.15;
   _bwEffFloor = 0.35;

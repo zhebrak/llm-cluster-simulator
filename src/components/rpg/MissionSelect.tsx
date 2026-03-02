@@ -6,22 +6,31 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Award, Sparkles, Cpu } from 'lucide-react';
+import { X, Award, Sparkles, Cpu, ChevronDown } from 'lucide-react';
 import { useRPGStore } from '../../stores/rpg.ts';
-import { ALL_ARCS } from '../../rpg/missions/index.ts';
+import { useTheme } from '../../hooks/useTheme.ts';
+import { ALL_ARCS, getActiveArc } from '../../rpg/missions/index.ts';
 import { getMissionsForArc, isMissionUnlocked, getMissionById } from '../../rpg/missions/index.ts';
-import { ALL_SKILLS } from '../../rpg/skills.ts';
+import { ALL_SKILLS, getEarnedStars, getStarCounts } from '../../rpg/skills.ts';
 import { getAvailableTierIds, HARDWARE_PROGRESSION } from '../../rpg/hardware.ts';
 
-function getPlayerTitle(completedCount: number, totalCount: number): string | null {
-  if (completedCount >= totalCount && totalCount > 0) return 'Systems Specialist';
-  if (completedCount >= 4) return 'Junior Compute Officer';
-  if (completedCount >= 1) return 'Apprentice Compute Officer';
+function getPlayerTitle(completedMissions: string[]): string | null {
+  const completed = new Set(completedMissions);
+  if (completed.has('mission-3-7')) return 'First Contact Commander';
+  if (completed.has('mission-3-1')) return 'Planetary Engineer';
+  if (completed.has('mission-2-11')) return 'Chief Compute Officer';
+  if (completed.has('mission-2-7')) return 'Fleet Architect';
+  if (completed.has('mission-2-4')) return 'Training Lead';
+  if (completed.has('mission-1-8')) return 'Signal Analyst';
+  // Fallback to count-based for early Arc 1
+  const count = completedMissions.length;
+  if (count >= 4) return 'Junior Compute Officer';
+  if (count >= 1) return 'Apprentice Compute Officer';
   return null;
 }
 
-/** Hover-triggered tooltip showing all skills (earned active, unearned dimmed). */
-function SkillsTooltip({ earnedSkills }: { earnedSkills: string[] }) {
+/** Hover-triggered tooltip showing all skills with star progression. */
+function SkillsTooltip({ completedMissions }: { completedMissions: string[] }) {
   const [show, setShow] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,18 +55,15 @@ function SkillsTooltip({ earnedSkills }: { earnedSkills: string[] }) {
     if (!show || !containerRef.current) { setPos(null); return; }
     const r = containerRef.current.getBoundingClientRect();
     const pad = 8;
-    const tipWidth = 272; // w-68 = 17rem = 272px
-    let x = r.left;
-    if (x + tipWidth > window.innerWidth - pad) {
-      x = window.innerWidth - tipWidth - pad;
-    }
+    const tipWidth = 272;
+    let x = r.left + r.width / 2 - tipWidth / 2;
+    x = Math.min(x, window.innerWidth - tipWidth - pad);
     x = Math.max(pad, x);
     setPos({ x, y: r.bottom + 4 });
   }, [show]);
 
   const allSkillIds = Object.keys(ALL_SKILLS);
-  const earnedSet = new Set(earnedSkills);
-  const earnedCount = earnedSkills.length;
+  const { earned } = getStarCounts(completedMissions);
 
   return (
     <div
@@ -68,39 +74,36 @@ function SkillsTooltip({ earnedSkills }: { earnedSkills: string[] }) {
     >
       <div
         className={`flex items-center gap-1.5 px-2 py-1 text-xs font-mono rounded border cursor-help transition-colors ${
-          earnedCount > 0
+          earned > 0
             ? 'text-sky-400/70 border-sky-500/30 hover:border-sky-400/40 hover:text-sky-300'
             : 'text-gray-600 border-gray-700 hover:border-gray-600 hover:text-gray-500'
         }`}
       >
         <Award className="w-3.5 h-3.5" />
-        <span>Skills {earnedCount}/{allSkillIds.length}</span>
+        <span>Level {earned}</span>
       </div>
 
       {show && createPortal(
         <div
-          className="fixed z-[60] bg-gray-950 border border-gray-700 rounded-lg shadow-xl p-2.5 w-[17rem]"
+          className="fixed z-[60] bg-gray-950 border border-gray-700 rounded-lg shadow-xl p-2.5 w-[272px]"
           style={{ left: pos?.x ?? -9999, top: pos?.y ?? -9999, opacity: pos ? 1 : 0 }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
-          <div className="flex flex-wrap gap-1.5">
-            {allSkillIds.map(id => {
-              const skill = ALL_SKILLS[id];
-              const earned = earnedSet.has(id);
-              return (
-                <span
+          <div className="space-y-1">
+            {[...allSkillIds]
+              .map(id => ({ id, stars: getEarnedStars(id, completedMissions) }))
+              .filter(s => s.stars > 0)
+              .sort((a, b) => b.stars - a.stars)
+              .map(({ id, stars }) => (
+                <div
                   key={id}
-                  className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded border ${
-                    earned
-                      ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
-                      : 'text-gray-500 border-gray-700/50 opacity-40'
-                  }`}
+                  className="flex items-center gap-2 px-2 py-1 text-xs font-mono rounded text-sky-300"
                 >
-                  {skill.name}
-                </span>
-              );
-            })}
+                  <span className="text-amber-400/80 text-base w-16 shrink-0 tracking-wider">{'\u2605'.repeat(stars)}</span>
+                  <span>{ALL_SKILLS[id].name}</span>
+                </div>
+              ))}
           </div>
         </div>,
         document.body,
@@ -126,13 +129,13 @@ function EncryptedSlot() {
     const id = setInterval(() => {
       setChars(prev => {
         const next = [...prev];
-        const swapCount = 2 + Math.floor(Math.random() * 2); // 2-3 chars
+        const swapCount = 3 + Math.floor(Math.random() * 3); // 3-5 chars
         for (let i = 0; i < swapCount; i++) {
           next[Math.floor(Math.random() * CIPHER_LENGTH)] = randomCipherChar();
         }
         return next;
       });
-    }, 3000);
+    }, 800);
     return () => clearInterval(id);
   }, []);
 
@@ -174,11 +177,9 @@ function ComputeBayTooltip({ completedMissions, newTierIds }: { completedMission
     if (!show || !containerRef.current) { setPos(null); return; }
     const r = containerRef.current.getBoundingClientRect();
     const pad = 8;
-    const tipWidth = 240;
-    let x = r.left;
-    if (x + tipWidth > window.innerWidth - pad) {
-      x = window.innerWidth - tipWidth - pad;
-    }
+    const tipWidth = 284;
+    let x = r.left + r.width / 2 - tipWidth / 2;
+    x = Math.min(x, window.innerWidth - tipWidth - pad);
     x = Math.max(pad, x);
     setPos({ x, y: r.bottom + 4 });
   }, [show]);
@@ -206,24 +207,35 @@ function ComputeBayTooltip({ completedMissions, newTierIds }: { completedMission
 
       {show && createPortal(
         <div
-          className="fixed z-[60] bg-gray-950 border border-gray-700 rounded-lg shadow-xl p-2.5 w-64"
+          className="fixed z-[60] bg-gray-950 border border-gray-700 rounded-lg shadow-xl p-2.5 w-[284px]"
           style={{ left: pos?.x ?? -9999, top: pos?.y ?? -9999, opacity: pos ? 1 : 0 }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
           <div className="flex flex-wrap gap-1.5">
-            {HARDWARE_PROGRESSION.flatMap(tier => {
-              const isActive = tier.unlockedBy === null || completedMissions.includes(tier.unlockedBy);
-              if (!isActive) return [];
-              return tier.gpus.map(slot => (
+            {(() => {
+              const aggregated = new Map<string, { label: string; count: number }>();
+              for (const tier of HARDWARE_PROGRESSION) {
+                const isActive = tier.unlockedBy === null || completedMissions.includes(tier.unlockedBy);
+                if (!isActive) continue;
+                for (const slot of tier.gpus) {
+                  const existing = aggregated.get(slot.gpuId);
+                  if (existing) {
+                    existing.count += slot.count;
+                  } else {
+                    aggregated.set(slot.gpuId, { label: slot.label, count: slot.count });
+                  }
+                }
+              }
+              return Array.from(aggregated.entries()).map(([gpuId, { label, count }]) => (
                 <span
-                  key={slot.gpuId}
+                  key={gpuId}
                   className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono rounded border bg-sky-500/15 text-sky-300 border-sky-500/30"
                 >
-                  {slot.label} &times;{slot.count}
+                  {label} &times;{count}
                 </span>
               ));
-            })}
+            })()}
           </div>
         </div>,
         document.body,
@@ -238,13 +250,13 @@ export function MissionSelect() {
   const menuOpen = useRPGStore(s => s.menuOpen);
   const closeMenu = useRPGStore(s => s.closeMenu);
   const dismissMissionSelect = useRPGStore(s => s.dismissMissionSelect);
-  const earnedSkills = useRPGStore(s => s.earnedSkills);
   const seenHardwareTierIds = useRPGStore(s => s.seenHardwareTierIds);
   const markHardwareSeen = useRPGStore(s => s.markHardwareSeen);
   const showBriefing = useRPGStore(s => s.showBriefing);
   const resetProgress = useRPGStore(s => s.resetProgress);
 
-  const handleClose = menuOpen ? closeMenu : dismissMissionSelect;
+  const baseClose = menuOpen ? closeMenu : dismissMissionSelect;
+  const handleClose = useCallback(() => { setConfirmingResetArcId(null); baseClose(); }, [baseClose]);
 
   // Hardware inventory
   const availableTierIds = useMemo(
@@ -263,66 +275,124 @@ export function MissionSelect() {
     }
   }, [availableTierIds, newTierIds.length, markHardwareSeen]);
 
-  // Total mission count (for player title)
-  const allMissions = useMemo(
-    () => ALL_ARCS.flatMap(arc => getMissionsForArc(arc.id)),
-    [],
-  );
-  const playerTitle = getPlayerTitle(completedMissions.length, allMissions.length);
+  const playerTitle = getPlayerTitle(completedMissions);
+
+  const [confirmingResetArcId, setConfirmingResetArcId] = useState<string | null>(null);
+
+  // Collapse arcs where all gameplay missions are completed
+  const [collapsedArcs, setCollapsedArcs] = useState<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const arc of ALL_ARCS) {
+      const gameplay = getMissionsForArc(arc.id).filter(m => m.type !== 'pivot');
+      if (gameplay.length > 0 && gameplay.every(m => completedMissions.includes(m.id))) {
+        set.add(arc.id);
+      }
+    }
+    return set;
+  });
+
+  const toggleArc = useCallback((arcId: string) => {
+    setCollapsedArcs(prev => {
+      const next = new Set(prev);
+      if (next.has(arcId)) next.delete(arcId);
+      else next.add(arcId);
+      return next;
+    });
+  }, []);
+
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const activeArc = getActiveArc(completedMissions);
+  const heroSrc = activeArc.heroImage
+    ? (isDark ? activeArc.heroImage.dark : activeArc.heroImage.light)
+    : (isDark ? '/ship_dark.png' : '/ship_light.png');
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div
-        className="bg-gray-950 border border-gray-800 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
+        className="bg-gray-950 border border-gray-800 rounded-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="mb-4">
-          <div className="flex items-start justify-between">
-            <div className="flex items-baseline gap-3">
-              <h2 className="text-lg font-semibold text-amber-400 uppercase tracking-wider font-mono">
-                Mission Log
-              </h2>
-              <button
-                onClick={() => showBriefing()}
-                className="text-xs text-gray-600 hover:text-amber-400 font-mono cursor-pointer transition-colors"
-              >
-                [BRIEFING]
-              </button>
-            </div>
+        {/* Hero image with title overlaid */}
+        <div className="relative overflow-hidden rounded-t-xl shrink-0" style={{ height: 120 }}>
+          <img
+            src={heroSrc}
+            alt=""
+            className="w-full h-full object-cover object-[center_35%]"
+          />
+          <div className="briefing-hero-fade absolute inset-x-0 bottom-0 h-20" />
+          <div
+            className="animate-scan-sweep absolute inset-x-0 h-px"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(251,191,36,0.18), transparent)' }}
+          />
+          {/* Title pinned to bottom of image */}
+          <h2
+            className="absolute left-8 bottom-2 text-lg font-semibold text-amber-400 uppercase tracking-wider font-mono"
+            style={{ textShadow: isDark
+              ? '0 1px 4px rgba(0,0,0,0.8)'
+              : '0 1px 4px rgba(255,255,255,0.9), 0 0 8px rgba(255,255,255,0.7)'
+            }}
+          >
+            Mission Log
+          </h2>
+          {/* Close button in top-right corner */}
+          <button
+            onClick={handleClose}
+            className="absolute top-2 right-2 text-gray-300 hover:text-white cursor-pointer p-1 rounded-full bg-black/30 hover:bg-black/50 backdrop-blur-sm transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Sub-header */}
+        <div className="pl-8 pr-5 pt-3 pb-1 shrink-0">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-amber-400/70 font-mono">
+              Generation Ship Meridian
+            </p>
             <button
-              onClick={handleClose}
-              className="text-gray-500 hover:text-gray-300 cursor-pointer p-1 -mt-1 -mr-1"
+              onClick={() => showBriefing()}
+              className="text-xs text-gray-600 hover:text-amber-400 font-mono cursor-pointer transition-colors"
             >
-              <X className="w-5 h-5" />
+              [BRIEFING]
             </button>
           </div>
-          <p className="text-xs text-gray-500 font-mono mt-0.5">
-            Generation Ship Meridian
-          </p>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-2.5">
             {playerTitle && (
               <span className="text-xs text-sky-400/70 font-mono">
                 {playerTitle}
               </span>
             )}
-            <SkillsTooltip earnedSkills={earnedSkills} />
+            <SkillsTooltip completedMissions={completedMissions} />
             <ComputeBayTooltip completedMissions={completedMissions} newTierIds={newTierIds} />
           </div>
         </div>
 
-        {/* Arcs */}
-        <div className="space-y-6">
+        {/* Arcs — scrollable */}
+        <div className="overflow-y-auto pl-8 pr-5 pb-5 pt-2 space-y-6">
           {ALL_ARCS.map(arc => {
             const missions = getMissionsForArc(arc.id);
+
+            // Hide arcs with no reachable missions (all locked)
+            const hasReachableMission = missions.some(
+              m => completedMissions.includes(m.id) || isMissionUnlocked(m, completedMissions)
+            );
+            if (!hasReachableMission) return null;
+
             const gameplayMissions = missions.filter(m => m.type !== 'pivot');
             const completedCount = gameplayMissions.filter(m => completedMissions.includes(m.id)).length;
 
+            const isCollapsed = collapsedArcs.has(arc.id);
+
             return (
               <div key={arc.id}>
-                {/* Arc header */}
-                <div className="border-l-2 border-amber-500/40 pl-3 mb-3">
+                {/* Arc header — clickable to toggle */}
+                <button
+                  onClick={() => toggleArc(arc.id)}
+                  className="w-full text-left border-l-2 border-amber-500/40 pl-3 mb-3 cursor-pointer group"
+                >
                   <div className="flex items-center gap-2">
+                    <ChevronDown className={`w-3.5 h-3.5 text-amber-400/60 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
                     <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wider font-mono">
                       {arc.name}
                     </h3>
@@ -330,19 +400,34 @@ export function MissionSelect() {
                       [{completedCount}/{gameplayMissions.length}]
                     </span>
                     {completedCount > 0 && (
-                      <button
-                        onClick={() => resetProgress()}
-                        className="text-xs font-mono text-gray-700 hover:text-gray-500 cursor-pointer transition-colors"
-                      >
-                        reset progress
-                      </button>
+                      confirmingResetArcId === arc.id ? (
+                        <span onClick={e => e.stopPropagation()} className="text-xs font-mono text-gray-500">
+                          Reset?{' '}
+                          <span
+                            onClick={() => { resetProgress(arc.id); setConfirmingResetArcId(null); }}
+                            className="text-red-400 hover:text-red-300 cursor-pointer transition-colors"
+                          >Yes</span>
+                          {' / '}
+                          <span
+                            onClick={() => setConfirmingResetArcId(null)}
+                            className="text-gray-400 hover:text-gray-300 cursor-pointer transition-colors"
+                          >No</span>
+                        </span>
+                      ) : (
+                        <span
+                          onClick={e => { e.stopPropagation(); setConfirmingResetArcId(arc.id); }}
+                          className="text-xs font-mono italic text-gray-700 hover:text-gray-500 transition-colors"
+                        >
+                          reset
+                        </span>
+                      )
                     )}
                   </div>
                   <p className="text-xs text-gray-500 font-mono mt-0.5">{arc.subtitle}</p>
-                </div>
+                </button>
 
-                {/* Missions */}
-                <div className="space-y-1">
+                {/* Missions — collapsible */}
+                {!isCollapsed && <div className="space-y-1">
                   {missions.map(mission => {
                     const isCompleted = completedMissions.includes(mission.id);
                     const isUnlocked = isMissionUnlocked(mission, completedMissions);
@@ -424,7 +509,7 @@ export function MissionSelect() {
                       </button>
                     );
                   })}
-                </div>
+                </div>}
               </div>
             );
           })}

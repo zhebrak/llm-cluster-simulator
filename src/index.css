@@ -289,13 +289,31 @@ body {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+
+@keyframes scan-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.animate-scan-sweep {
+  animation: scan-sweep 6s linear infinite;
+}
+
+.briefing-hero-fade {
+  background: linear-gradient(to top, rgb(3 7 18), transparent);
+}
+
+[data-theme="light"] .briefing-hero-fade {
+  background: linear-gradient(to top, var(--color-bg-primary), transparent) !important;
+}
+
 @keyframes cipher-pulse {
   0%, 100% { opacity: 0.85; }
   50% { opacity: 1; }
 }
 
 .animate-cipher-pulse {
-  animation: cipher-pulse 4s ease-in-out infinite;
+  animation: cipher-pulse 2s ease-in-out infinite;
 }
 
 .animate-flow {
@@ -554,7 +572,7 @@ input[type="range"]::-moz-range-track {
 .bg-gray-950 { background-color: var(--color-bg-primary) !important; }
 .bg-gray-900 { background-color: var(--color-bg-primary) !important; }
 .bg-gray-900\/30 { background-color: rgba(248, 249, 252, 0.9) !important; }
-.bg-gray-900\/50 { background-color: rgba(255, 255, 255, 0.9) !important; }
+.bg-gray-900\/50 { background-color: rgba(232, 238, 244, 0.5) !important; }
 .bg-gray-800 { background-color: var(--color-bg-secondary) !important; }
 .bg-gray-800\/50 { background-color: rgba(240, 244, 248, 0.8) !important; }
 .bg-gray-700 { background-color: #e2e8f0 !important; }

@@ -130,14 +130,18 @@ describe('Mission 1-1 — Wake-Up Call (quantization)', () => {
   it('bypass: no changes at all', () => {
     expect(validate('mission-1-1', snapshot, snapshot).valid).toBe(false);
   });
+  it('bypass: increase numGPUs instead of learning quantization', () => {
+    expect(validate('mission-1-1', snapshot,
+      makeSnapshotForMission('mission-1-1', { numGPUs: 4 })).valid).toBe(false);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════
-// Mission 1-2: The Wrong Model (lesson: model selection)
+// Mission 1-2: The Upgrade (lesson: model selection)
 // expectedChanges: modelId=changed, gpuId=unchanged
 // ═════════════════════════════════════════════════════════════════════
 
-describe('Mission 1-2 — The Wrong Model (model selection)', () => {
+describe('Mission 1-2 — The Upgrade (model selection)', () => {
   const snapshot = makeSnapshotForMission('mission-1-2');
 
   it('correct: switch to 8B model', () => {
@@ -166,6 +170,10 @@ describe('Mission 1-2 — The Wrong Model (model selection)', () => {
   });
   it('bypass: no changes at all', () => {
     expect(validate('mission-1-2', snapshot, snapshot).valid).toBe(false);
+  });
+  it('bypass: increase numGPUs instead of learning model selection', () => {
+    expect(validate('mission-1-2', snapshot,
+      makeSnapshotForMission('mission-1-2', { numGPUs: 4 })).valid).toBe(false);
   });
 });
 
@@ -203,6 +211,10 @@ describe('Mission 1-3 — Slow Reflexes (GPU bandwidth)', () => {
   });
   it('bypass: no changes at all', () => {
     expect(validate('mission-1-3', snapshot, snapshot).valid).toBe(false);
+  });
+  it('bypass: increase numGPUs instead of learning bandwidth', () => {
+    expect(validate('mission-1-3', snapshot,
+      makeSnapshotForMission('mission-1-3', { numGPUs: 4 })).valid).toBe(false);
   });
 });
 
@@ -245,6 +257,10 @@ describe('Mission 1-4 — Cryo-Pod Monitoring (batching)', () => {
   it('bypass: no changes at all', () => {
     expect(validate('mission-1-4', snapshot, snapshot).valid).toBe(false);
   });
+  it('bypass: increase numGPUs instead of learning batching', () => {
+    expect(validate('mission-1-4', snapshot,
+      makeSnapshotForMission('mission-1-4', { numGPUs: 4 })).valid).toBe(false);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════
@@ -266,14 +282,10 @@ describe('Mission 1-5 — Memory Leak (FA/KV cache, permissive)', () => {
     expect(validate('mission-1-5', snapshot,
       makeSnapshotForMission('mission-1-5', { kvCachePrecision: 'int8' })).valid).toBe(true);
   });
-  it('correct: enable paged attention', () => {
-    expect(validate('mission-1-5', snapshot,
-      makeSnapshotForMission('mission-1-5', { pagedAttention: true })).valid).toBe(true);
-  });
-  it('correct: combine FA + KV quant + paged attention', () => {
+  it('correct: combine FA + KV quant', () => {
     expect(validate('mission-1-5', snapshot,
       makeSnapshotForMission('mission-1-5', {
-        flashAttention: true, kvCachePrecision: 'fp8', pagedAttention: true,
+        flashAttention: true, kvCachePrecision: 'fp8',
       })).valid).toBe(true);
   });
   it('correct: even no technique changes passes expectedChanges (winning criteria rejects OOM separately)', () => {
@@ -287,6 +299,10 @@ describe('Mission 1-5 — Memory Leak (FA/KV cache, permissive)', () => {
   it('bypass: only change GPU', () => {
     expect(validate('mission-1-5', snapshot,
       makeSnapshotForMission('mission-1-5', { gpuId: 'h100-sxm' })).valid).toBe(false);
+  });
+  it('bypass: increase numGPUs instead of learning FA/KV cache', () => {
+    expect(validate('mission-1-5', snapshot,
+      makeSnapshotForMission('mission-1-5', { numGPUs: 4 })).valid).toBe(false);
   });
 });
 
@@ -324,5 +340,42 @@ describe('Mission 1-6 — The Archive Vault (tensor parallelism)', () => {
   });
   it('bypass: no changes at all', () => {
     expect(validate('mission-1-6', snapshot, snapshot).valid).toBe(false);
+  });
+  it('bypass: increase numGPUs instead of learning TP', () => {
+    expect(validate('mission-1-6', snapshot,
+      makeSnapshotForMission('mission-1-6', { numGPUs: 8 })).valid).toBe(false);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════
+// Mission 1-7: Fuel Budget (lesson: cost optimization via quantization + fewer GPUs)
+// expectedChanges: numGPUs=decreased, modelId=unchanged, gpuId=unchanged, pricePerGPUHour=unchanged
+// ═════════════════════════════════════════════════════════════════════
+
+describe('Mission 1-7 — Fuel Budget (cost optimization)', () => {
+  const snapshot = makeSnapshotForMission('mission-1-7');
+
+  it('correct: INT8 + TP=2 + 2 GPUs', () => {
+    expect(validate('mission-1-7', snapshot,
+      makeSnapshotForMission('mission-1-7', { numGPUs: 2, tensorParallel: 2, weightPrecision: 'int8' })).valid).toBe(true);
+  });
+  it('correct: INT4 + single GPU', () => {
+    expect(validate('mission-1-7', snapshot,
+      makeSnapshotForMission('mission-1-7', { numGPUs: 1, tensorParallel: 1, weightPrecision: 'int4' })).valid).toBe(true);
+  });
+  it('bypass: increase numGPUs', () => {
+    expect(validate('mission-1-7', snapshot,
+      makeSnapshotForMission('mission-1-7', { numGPUs: 8 })).valid).toBe(false);
+  });
+  it('bypass: change model', () => {
+    expect(validate('mission-1-7', snapshot,
+      makeSnapshotForMission('mission-1-7', { modelId: 'llama3.1-8b' })).valid).toBe(false);
+  });
+  it('bypass: change GPU', () => {
+    expect(validate('mission-1-7', snapshot,
+      makeSnapshotForMission('mission-1-7', { gpuId: 'h100-sxm' })).valid).toBe(false);
+  });
+  it('bypass: no changes at all', () => {
+    expect(validate('mission-1-7', snapshot, snapshot).valid).toBe(false);
   });
 });

@@ -4,7 +4,7 @@
  *
  * DAG (1-1 is sole entry point):
  *   1-1 Wake-Up Call
- *    ├── 1-2 The Wrong Model
+ *    ├── 1-2 The Upgrade
  *    ├── 1-3 Slow Reflexes ──────────────┐
  *    ├── 1-4 Cryo-Pod Monitoring         │
  *    └── 1-5 Memory Leak ───────────┐    │
@@ -21,9 +21,14 @@ import type { RPGArc, RPGMission } from '../types.ts';
 export const ARC1: RPGArc = {
   id: 'arc1-survival',
   name: 'Survival',
-  subtitle: 'The ship is old. Systems are failing.',
+  subtitle: 'The ship is old. Systems are failing',
   description: 'Critical ship systems need restoring. Each mission brings another subsystem back online.',
   order: 1,
+  briefing: `You are the Compute Officer aboard the GSV Meridian, a generation ship 80 years into its transit toward Kepler-442b. The ship carries 200 colonists in cryogenic stasis and a skeleton crew rotating through watch cycles.
+
+Every critical system on board — navigation, life support monitoring, long-range sensors, crew AI — runs on GPU-accelerated ML models. Your job is to keep them running on hardware that was state-of-the-art at launch — 80 years ago.
+
+Systems are failing. Power budgets are tight. The compute bay holds a few aging GPUs. Every configuration decision you make has consequences — an OOM crash can blind the sensors, and wasted GPU-hours drain reserves that keep the crew alive.`,
 };
 
 export const ARC1_MISSIONS: RPGMission[] = [
@@ -41,45 +46,52 @@ export const ARC1_MISSIONS: RPGMission[] = [
     ],
     briefing: `You're jolted awake by alarms. The generation ship's long-range sensor array has gone offline — the inference model that processes sensor data crashed during a power fluctuation.
 
-The diagnostic readout is blunt: the model was loaded at full precision, and the GPU's memory is completely exhausted. The card simply doesn't have enough VRAM to hold all the weights.
+The diagnostic readout is blunt: the model was loaded at full precision, and the GPU's memory is exhausted. The card doesn't have enough VRAM to hold all the weights.
 
 Get the sensor model running. The hardware can't be swapped — you'll need to find a way to fit the model into the memory you have.`,
     successNarrative: `The sensor array flickers back to life. Stars resolve on the navigation display for the first time in hours.
 
-By reducing the weight precision, you compressed the model to fit within the GPU's memory budget. Each parameter now takes fewer bytes to store — a small trade in numerical accuracy for a dramatic reduction in memory footprint.
+Reducing weight precision compressed the model to fit within the GPU's memory budget. Each parameter now takes fewer bytes to store — a small trade in numerical accuracy for a large reduction in memory footprint.
 
-Quantization like this is one of the most practical tools on a resource-constrained ship. The model runs slightly less precisely, but it runs.`,
+Quantization like this is one of the most practical tools on a resource-constrained ship. The model runs slightly less precisely, but it runs.
+
+*Log entry, CO Martinez, Year 42: "T4s handle INT8 weights for the full sensor suite. Anything larger is a pipe dream with this VRAM. But she holds."*`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.1-8b',
       gpuId: 't4',
       numGPUs: 1,
-      weightPrecision: 'bf16',
+      weightPrecision: 'fp16',
+      inputSeqLen: 1024,
+      outputSeqLen: 512,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Model fits in GPU memory' },
     ],
     expectedChanges: [
+      { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
       { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
+      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
-      'The model weights consume `parameters × bytes_per_parameter` of GPU memory. At full precision, each parameter takes 2 bytes. How much memory is that for an 8B parameter model?',
+      'Check the memory breakdown on the dashboard — the model weights are the dominant cost. The Weight Precision selector shows the current bytes per parameter. Can you find a format that uses fewer?',
       'Look at the Weight Precision selector in the sidebar. Lower-precision formats store each parameter in fewer bytes — some use just 1 byte per parameter.',
-      'Try INT8 — it halves the memory footprint compared to BF16 while maintaining reasonable accuracy for inference.',
+      'A format that halves bytes per parameter would halve the memory footprint. Look for one that maintains reasonable accuracy for inference.',
     ],
     prerequisites: [],
-    skillsAwarded: ['quantization'],
+    skillsAwarded: ['precision'],
   },
 
-  // ── Mission 1-2: The Wrong Model ──────────────────────────────────
+  // ── Mission 1-2: The Upgrade ──────────────────────────────────────
   {
     id: 'mission-1-2',
     arcId: 'arc1-survival',
     order: 2,
-    title: 'The Wrong Model',
-    subtitle: 'The upgrade that doesn\'t fit',
+    title: 'The Upgrade',
+    subtitle: 'A signal from mission control',
     learningObjectives: [
       'Calculate minimum weight memory: params × bytes_per_param at maximum quantization',
       'Recognize when no quantization can bridge the gap between model size and GPU memory',
@@ -100,22 +112,27 @@ Good model selection starts here: check whether the model can physically fit bef
       modelId: 'llama3.3-70b',
       gpuId: 'rtx-4090',
       numGPUs: 1,
+      inputSeqLen: 1024,
+      outputSeqLen: 512,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Model fits in GPU memory' },
       { field: 'throughput.tokensPerSecond', operator: '>', value: 20, label: 'Throughput > 20 tok/s' },
     ],
     expectedChanges: [
+      { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
       { field: 'modelId', check: 'changed', label: 'Changed to a different model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
+      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
-      'Calculate the minimum weight memory: 70B × 0.5 bytes/param (INT4) = 35GB. The RTX 4090 has 24GB. No quantization level can close that gap.',
+      'Try every precision option and watch the memory breakdown. Even at the most aggressive quantization, calculate the floor — minimum bytes per parameter times 70 billion — and compare that to the GPU\'s total VRAM.',
       'The model itself is too large for this GPU at any precision. You need to switch to a smaller model entirely.',
-      "Try selecting a model from the registry that's small enough to fit — an 8B model at INT4 uses only ~4GB of VRAM.",
+      "What's the smallest model class that fits at maximum compression? Check the registry for models whose minimum footprint falls under 24GB.",
     ],
     prerequisites: ['mission-1-1'],
-    skillsAwarded: ['model-selection'],
+    skillsAwarded: ['hardware'],
   },
 
   // ── Mission 1-3: Slow Reflexes ────────────────────────────────────
@@ -130,37 +147,44 @@ Good model selection starts here: check whether the model can physically fit bef
       'Compare GPU bandwidth specs to predict relative throughput',
       'Choose a GPU based on bandwidth requirements, not just VRAM',
     ],
-    briefing: `The sensor model is back online, but the response time is unacceptable. Asteroids appear on the display seconds after they enter scanner range — at current velocities, that's too slow for collision avoidance.
+    briefing: `The sensor model is back online, but the response time is unacceptable. Asteroids appear on the display seconds after they enter scanner range — at current velocities, seconds are the entire margin between course correction and hull breach.
 
 The model runs on a T4 GPU with INT8 precision. It fits in memory fine, but the decode step — generating each output token — is painfully slow. Each token requires reading the entire model's weights from GPU memory.
 
 The bottleneck isn't compute or memory capacity. It's how fast the GPU can read data from its memory. Find a GPU with higher memory bandwidth.`,
     successNarrative: `Asteroid tracking snaps to real-time. Objects now appear on the display the instant they enter scanner range.
 
-The T4 had enough memory — the bottleneck was memory bandwidth. Autoregressive decode reads the full weight matrix for every output token, so throughput scales directly with how fast the GPU can stream data from memory. The new card's higher bandwidth translates straight into more tokens per second.
+The T4 had enough memory — the bottleneck was memory bandwidth. Autoregressive decode reads the full weight matrix for every output token, so throughput scales directly with how fast the GPU can stream data from memory. The new card's higher bandwidth translates directly into more tokens per second.
 
-For decode-heavy workloads, memory bandwidth is the spec that matters most.`,
+For decode-heavy workloads, memory bandwidth is the spec that matters most.
+
+*Log entry, CO Martinez, Year 58: "Replaced the bandwidth monitoring script again. The T4 reads fast enough — for now. Margins are shrinking. When this card dies, the ship loses reflexes."*`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.1-8b',
       gpuId: 't4',
       numGPUs: 1,
       weightPrecision: 'int8',
+      inputSeqLen: 1024,
+      outputSeqLen: 512,
     },
     winningCriteria: [
       { field: 'throughput.tokensPerSecond', operator: '>', value: 60, label: 'Throughput > 60 tok/s' },
     ],
     expectedChanges: [
+      { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
       { field: 'gpuId', check: 'changed', label: 'Changed to a different GPU' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
+      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'Autoregressive decode reads the entire weight matrix for every token generated. Throughput is limited by how fast the GPU can read from memory — its memory bandwidth.',
       "Compare the T4's memory bandwidth to the RTX 4090's in the GPU specs — one has significantly higher bandwidth than the other.",
-      'Switch to the RTX 4090. Its significantly higher memory bandwidth should push throughput well above the target.',
+      'Compare the memory bandwidth specs of your available GPUs. The one with higher bandwidth should push throughput well above the target.',
     ],
     prerequisites: ['mission-1-1'],
-    skillsAwarded: ['gpu-bandwidth'],
+    skillsAwarded: ['hardware'],
   },
 
   // ── Mission 1-4: Cryo-Pod Monitoring ──────────────────────────────
@@ -182,7 +206,7 @@ The model handles individual queries fine on the RTX 4090. But processing pods s
 Processing multiple queries at once should be more efficient. The GPU reads the weights once and applies them to all queries simultaneously.`,
     successNarrative: `The monitoring sweep completes in seconds instead of minutes. Vital sign alerts trigger immediately across all 200 pods.
 
-At a batch size of 1, the GPU reads the full model weights for every single query — compute cores sitting idle, waiting on memory. By batching multiple queries together, the same weight read serves all of them simultaneously. The memory bandwidth cost is amortized, and throughput scales nearly linearly until the compute units saturate.
+At a batch size of 1, the GPU reads the full model weights for every query — compute cores sitting idle, waiting on memory. By batching multiple queries together, the same weight read serves all of them simultaneously. The memory bandwidth cost is amortized, and throughput scales nearly linearly until the compute units saturate.
 
 Fewer sweeps, faster cycles, no pod left waiting.`,
     primaryMode: 'inference',
@@ -192,22 +216,27 @@ Fewer sweeps, faster cycles, no pod left waiting.`,
       numGPUs: 1,
       weightPrecision: 'int8',
       batchSize: 1,
+      inputSeqLen: 1024,
+      outputSeqLen: 512,
     },
     winningCriteria: [
       { field: 'throughput.tokensPerSecond', operator: '>', value: 400, label: 'Throughput > 400 tok/s' },
     ],
     expectedChanges: [
+      { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
       { field: 'batchSize', check: 'increased', label: 'Increased batch size' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
+      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'At batch=1, every token generation reads the full model weights from GPU memory. The compute cores are underutilized — they finish the math long before the next weight read arrives.',
       'Batching amortizes the weight read across N queries. Batch=N means the weights are read once and applied to N tokens simultaneously, approaching N× throughput.',
-      'Try increasing the batch size to 8, 16, or higher. Watch throughput scale with batch size until the compute units saturate.',
+      'Increase the batch size until throughput plateaus. Watch it scale nearly linearly at first, then flatten as the compute units saturate.',
     ],
     prerequisites: ['mission-1-1'],
-    skillsAwarded: ['batch-size'],
+    skillsAwarded: ['batching'],
   },
 
   // ── Mission 1-5: Memory Leak ──────────────────────────────────────
@@ -220,18 +249,20 @@ Fewer sweeps, faster cycles, no pod left waiting.`,
     learningObjectives: [
       'Diagnose long-context memory failures from KV cache growth and attention workspace',
       'Enable Flash Attention to eliminate O(N^2) attention memory',
-      'Apply KV cache quantization or paged attention to reduce dynamic memory',
+      'Understand KV cache growth and apply cache quantization to reduce per-token memory',
     ],
     briefing: `The crew AI handles short exchanges fine, but extended conversations crash it. Crew members report the system freezing mid-sentence during long diagnostic discussions — the ones where context matters most.
 
-The diagnostic log reveals a memory spike during long-context inference. Two culprits: the attention mechanism's workspace grows with the square of the sequence length, and the KV cache — which stores previous token representations — accumulates linearly with every token generated.
+The memory trace tells the story: as conversations grow, GPU memory climbs steadily — then, past a certain length, it spikes catastrophically. Short exchanges barely register. Long ones hit a wall. The model's weights haven't changed. Something else is growing with every token the conversation produces, and at 128K tokens it overwhelms the GPU entirely.
 
-At 32K tokens, the combined memory demand overflows the GPU. The model weights are fine; it's the runtime memory that's the problem.`,
-    successNarrative: `Dr. Chen's crew AI terminal stabilizes. Extended diagnostic sessions run to completion, even at maximum context length.
+The model isn't too large. The conversation is.`,
+    successNarrative: `The crew AI terminal stabilizes. Extended diagnostic sessions run to completion, even at maximum context length.
 
 The fix targeted runtime memory, not weight memory. Flash Attention computes attention in tiles rather than materializing the full matrix, collapsing workspace from O(N²) to O(N). Combined with KV cache quantization, the dynamic memory that accumulates with every generated token is finally under control.
 
-Long conversations no longer mean a death spiral of growing memory.`,
+Long conversations no longer mean runaway memory growth.
+
+*Log entry, CO Martinez, Year 55: "Crew AI crashes again on long sessions. Short conversations fine — anything past ten minutes, gone. Been meaning to look into it. Always something more urgent."*`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.1-8b',
@@ -239,26 +270,27 @@ Long conversations no longer mean a death spiral of growing memory.`,
       numGPUs: 1,
       weightPrecision: 'int8',
       flashAttention: false,
-      pagedAttention: false,
       kvCachePrecision: 'bf16',
-      inputSeqLen: 32768,
+      inputSeqLen: 131072,
+      outputSeqLen: 512,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Model fits in GPU memory' },
     ],
     expectedChanges: [
+      { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
-      { field: 'weightPrecision', check: 'unchanged', label: 'Did not change weight precision' },
       { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'Two memory consumers grow with sequence length: the attention workspace (O(N^2) without Flash Attention) and the KV cache (linear, stores key/value pairs for every past token).',
       'Flash Attention computes attention in tiles, reducing workspace memory from O(N^2) to O(N). Enable it in the sidebar.',
-      'If Flash Attention alone isn\'t enough, KV cache quantization (INT8) halves per-token cache memory, and paged attention eliminates internal fragmentation.',
+      'Flash Attention alone isn\'t enough at this context length — the KV cache still overflows. KV cache quantization (INT8 or FP8) halves per-token cache memory.',
     ],
     prerequisites: ['mission-1-1'],
-    skillsAwarded: ['kv-cache'],
+    skillsAwarded: ['inference-optimization'],
   },
 
   // ── Mission 1-6: The Archive Vault ────────────────────────────────
@@ -280,32 +312,39 @@ The long-range scanner needs a major upgrade. A 70B-parameter model would give f
 Prove these GPUs are operational. The model's weight matrices can be split across them — each GPU holds a fraction and synchronizes with the others after each layer.`,
     successNarrative: `The long-range scanner's resolution jumps by an order of magnitude. The 70B model resolves objects that the 8B model couldn't distinguish from noise. The A100s are confirmed operational.
 
-With tensor parallelism, the weight matrices are split across GPUs — each one stores and computes its fraction of every layer, then an AllReduce synchronization merges the partial results. The 140GB model now lives comfortably across four 80GB cards.
+With tensor parallelism, the weight matrices are split across GPUs — each one stores and computes its fraction of every layer, then an AllReduce synchronizes the partial activations before the next layer begins. The 140GB model now fits across four 80GB cards.
 
-The tradeoff is communication overhead between GPUs, but for a model this size, there's no other way to get it running.`,
+The tradeoff is communication overhead between GPUs, but for a model this size, it's the most direct way to get it running.
+
+*Log entry, CO Martinez, Year 61: "Found sealed compute module near reactor core. Four A100s, never powered. Okafor keeps asking about training mode — says we should be adapting the models to real sensor data instead of running decade-old weights. Told her the power draw isn't worth it. Hope I'm right."*`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.3-70b',
       gpuId: 'a100-80gb',
       numGPUs: 4,
       weightPrecision: 'bf16',
+      inputSeqLen: 1024,
+      outputSeqLen: 512,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Model fits in GPU memory' },
       { field: 'latency.ttft', operator: '<', value: 500, label: 'TTFT < 500ms' },
     ],
     expectedChanges: [
+      { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
       { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
+      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'At BF16, the 70B model needs ~140GB of VRAM. Each A100 has 80GB — the model must be split across multiple GPUs.',
       'Tensor parallelism shards weight matrices across GPUs. Each GPU holds 1/TP of the model and they synchronize after each layer via AllReduce.',
-      'Try TP=2 (70GB/GPU) or TP=4 (35GB/GPU). Higher TP reduces per-GPU memory but adds communication overhead.',
+      'Divide the total weight memory by different TP degrees to see how much each GPU would hold. Higher TP reduces per-GPU memory but adds communication overhead — find the degree that fits.',
     ],
     prerequisites: ['mission-1-2', 'mission-1-3'],
-    skillsAwarded: ['tensor-parallelism'],
+    skillsAwarded: ['model-parallelism'],
   },
 
   // ── Mission 1-7: Fuel Budget ──────────────────────────────────────
@@ -337,6 +376,8 @@ Every freed GPU is power the ship can spend elsewhere. Cost optimization on a ge
       numGPUs: 4,
       tensorParallel: 4,
       weightPrecision: 'bf16',
+      inputSeqLen: 1024,
+      outputSeqLen: 512,
     },
     winningCriteria: [
       { field: 'success', operator: '==', value: true, label: 'Model fits in GPU memory' },
@@ -348,14 +389,16 @@ Every freed GPU is power the ship can spend elsewhere. Cost optimization on a ge
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
       { field: 'pricePerGPUHour', check: 'unchanged', label: 'Did not change GPU pricing' },
+      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
+      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'Each A100 draws significant power. Four GPUs cost far more per hour than two — halving the count directly halves the energy drain.',
-      'Quantization shrinks the model so fewer GPUs are needed. INT8 halves weight memory: 70B × 1 byte = 70GB, which fits on two A100s with TP=2.',
-      'Try setting weight precision to INT8, reducing numGPUs to 2, and setting TP=2. At INT4 (35GB), the model could even fit on a single GPU.',
+      'Quantization shrinks the model so fewer GPUs are needed. If you halve the bytes per parameter, you halve the total weight memory — how many 80GB cards does the compressed model need?',
+      'Combine precision reduction with fewer GPUs. The math should tell you the minimum — calculate the compressed weight size and see how many 80GB cards it needs.',
     ],
     prerequisites: ['mission-1-6'],
-    skillsAwarded: ['cost-optimization'],
+    skillsAwarded: ['resource-efficiency', 'precision'],
   },
 
   // ── Mission 1-8: The Signal (Pivot) ───────────────────────────────
@@ -367,18 +410,16 @@ Every freed GPU is power the ship can spend elsewhere. Cost optimization on a ge
     subtitle: 'Every display on the bridge lights up',
     type: 'pivot',
     learningObjectives: [],
-    briefing: `0300 ship time. The bridge is empty except for the night watch when the long-range scanner — the 70B model you upgraded in the Archive Vault — flags an anomaly.
+    briefing: `03:00 ship time. The bridge is dark except for instrument glow and the night watch dozing at her station. Then every display lights up at once.
 
-A structured, repeating signal from the direction of Kepler-442b. Not cosmic noise. Not instrument artifacts. A pattern with information content.
+A structured, repeating signal from the direction of Kepler-442b. Not cosmic noise. Not instrument artifacts. A pattern with structure. With purpose.
 
-The sensor array you restored in Mission 1 confirms: the signal is real, originating from the star system you've been traveling toward for 80 years. The crew AI flags Dr. Chen for an emergency wake cycle.`,
+The sensor array confirms it independently: the signal is real, originating from the star system the Meridian has been falling toward for 80 years. The crew AI flags Dr. Chen for an emergency wake cycle.`,
     successNarrative: `Dr. Chen arrives on the bridge, still shaking off cryo-fog. She stares at the signal analysis for a long time.
 
-"This isn't natural," she says. "The repetition structure, the frequency modulation — this is encoded information. Someone — or something — is broadcasting from Kepler-442b."
+"This isn't natural," she says quietly. "The repetition structure, the frequency modulation — this is encoded information. Something is broadcasting from Kepler-442b."
 
-The ship's mission has fundamentally changed. You're no longer just surviving the journey. Whatever awaits at Kepler-442b is actively communicating.
-
-Every system you've restored — sensors, navigation, crew AI, the scanner — serves a new purpose. The real adventure is just beginning.`,
+The bridge is silent. Eighty years of survival, and the universe just answered back.`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.1-8b',

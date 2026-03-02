@@ -203,7 +203,7 @@ export function GameMenu() {
               onClick={() => { if (menuOpen) openMenu('levels'); else clearLevel(); }}
               className="text-sm text-gray-400 hover:text-white mb-4 cursor-pointer"
             >
-              ← Back to levels
+              ← To levels
             </button>
             <LevelTaskList mode={activeMode} difficulty={activeDifficulty} />
           </div>

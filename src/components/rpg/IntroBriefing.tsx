@@ -1,59 +1,93 @@
 /**
  * IntroBriefing — one-time intro shown on first RPG entry.
  * Re-accessible via "View Briefing" button in MissionSelect.
+ * Shows arc-appropriate text and hero image based on player progression.
  */
 
 import { Terminal } from 'lucide-react';
 import { useRPGStore } from '../../stores/rpg.ts';
+import { useTheme } from '../../hooks/useTheme.ts';
+import { getActiveArc } from '../../rpg/missions/index.ts';
 
 export function IntroBriefing() {
   const dismissIntro = useRPGStore(s => s.dismissIntro);
   const introSeen = useRPGStore(s => s.introSeen);
+  const completedMissions = useRPGStore(s => s.completedMissions);
+  const { theme } = useTheme();
+
+  const arc = getActiveArc(completedMissions);
+  const isDark = theme === 'dark';
+
+  const heroSrc = arc.heroImage
+    ? (isDark ? arc.heroImage.dark : arc.heroImage.light)
+    : (isDark ? '/ship_dark.png' : '/ship_light.png');
+
+  const paragraphs = arc.briefing?.split('\n\n') ?? [];
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div
-        className="bg-gray-950 border border-amber-500/30 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
+        className="bg-gray-950 border border-amber-500/30 rounded-xl max-w-lg w-full mx-4"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
-            <Terminal className="w-5 h-5 text-amber-400" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-amber-400 uppercase tracking-wider font-mono">
-              Mission Briefing
-            </h2>
-            <p className="text-xs text-gray-500 font-mono mt-0.5">
-              GSV Meridian — Compute Division
-            </p>
+        {/* Hero image with header overlaid */}
+        <div className="relative overflow-hidden rounded-t-xl" style={{ height: 140 }}>
+          <img
+            src={heroSrc}
+            alt=""
+            className="w-full h-full object-cover object-[center_35%]"
+          />
+          {/* Gradient fade to modal bg */}
+          <div className="briefing-hero-fade absolute inset-x-0 bottom-0 h-20" />
+          {/* Scan line */}
+          <div
+            className="animate-scan-sweep absolute inset-x-0 h-px"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(251,191,36,0.18), transparent)' }}
+          />
+          {/* Header pinned to bottom of image */}
+          <div className="absolute inset-x-0 bottom-0 px-5 pb-2.5 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-amber-500/20 flex items-center justify-center backdrop-blur-sm">
+              <Terminal className="w-4 h-4 text-amber-400" />
+            </div>
+            <div>
+              <h2
+                className="text-base font-semibold text-amber-400 uppercase tracking-wider font-mono"
+                style={{ textShadow: isDark
+                  ? '0 1px 4px rgba(0,0,0,0.8)'
+                  : '0 1px 4px rgba(255,255,255,0.9), 0 0 8px rgba(255,255,255,0.7)'
+                }}
+              >
+                Mission Briefing
+              </h2>
+              <p
+                className="text-xs text-amber-400/70 font-mono mt-0.5"
+                style={{ textShadow: isDark
+                  ? '0 1px 3px rgba(0,0,0,0.8)'
+                  : '0 1px 3px rgba(255,255,255,0.9), 0 0 6px rgba(255,255,255,0.7)'
+                }}
+              >
+                GSV Meridian — Compute Division
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Body */}
-        <div className="space-y-3 mb-6">
-          <p className="text-sm text-gray-300 leading-relaxed font-mono">
-            You are the Compute Officer aboard the GSV <span className="text-sky-300">Meridian</span>, a generation ship 80 years into its transit toward Kepler-442b. The ship carries 200 colonists in cryogenic stasis and a skeleton crew rotating through watch cycles.
-          </p>
-          <p className="text-sm text-gray-300 leading-relaxed font-mono">
-            Every critical system on board — navigation, life support monitoring, long-range sensors, crew AI — runs on GPU-accelerated ML models. Your job is to keep them running on hardware that was state-of-the-art at launch — 80 years ago.
-          </p>
-          <p className="text-sm text-gray-300 leading-relaxed font-mono">
-            Systems are failing. Power budgets are tight. The compute bay holds a handful of aging GPUs. Every configuration decision you make has consequences — an OOM crash can blind the sensors, and wasted GPU-hours drain reserves that keep the crew alive.
-          </p>
-          <p className="text-sm text-gray-400 leading-relaxed font-mono italic">
-            Each mission presents a failing system. Diagnose the problem, configure the simulator to solve it, and bring the system back online. Hints are available if you get stuck.
-          </p>
-        </div>
+        <div className="px-5 pb-5 pt-3 space-y-2.5">
+          {paragraphs.map((text, i) => (
+            <p key={i} className="text-sm text-gray-300 leading-relaxed font-mono">
+              {text}
+            </p>
+          ))}
 
-        {/* CTA */}
-        <button
-          onClick={dismissIntro}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium font-mono transition-colors cursor-pointer"
-        >
-          {introSeen ? 'Continue' : 'Begin'}
-        </button>
+          {/* CTA */}
+          <button
+            onClick={dismissIntro}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium font-mono transition-colors cursor-pointer !mt-5"
+          >
+            {introSeen ? 'Continue' : 'Begin'}
+          </button>
+        </div>
       </div>
     </div>
   );

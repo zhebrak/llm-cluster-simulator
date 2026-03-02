@@ -307,6 +307,7 @@ export const useGameStore = create<GameState>()(
               state.hintsRevealed = saved.hintsRevealed;
               state.attempts = saved.attempts;
               state.lastValidation = saved.lastValidation;
+              state.successDismissed = true;
             } else {
               state.hintsRevealed = lastTaskState.hintsRevealed;
               state.attempts = lastTaskState.attempts;

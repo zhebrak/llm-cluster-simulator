@@ -33,7 +33,7 @@ export function ArcComplete() {
           {arc.name}
         </p>
         <p className="text-sm text-gray-500 mb-6 font-mono">
-          All systems have been restored.
+          {arc.closureText ?? 'All missions complete.'}
         </p>
 
         <button
@@ -41,7 +41,7 @@ export function ArcComplete() {
           className="flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium font-mono transition-colors cursor-pointer mx-auto"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Missions
+          To Mission Log
         </button>
       </div>
     </div>

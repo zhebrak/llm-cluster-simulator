@@ -181,6 +181,20 @@ With MLA (DeepSeek V2/V3/R1): weights scale with 1/TP (and 1/EP for experts),
 but KV cache is **replicated** across TP ranks since all heads need the full
 compressed latent.
 
+**Cross-node TP**: When `clusterConfig` is provided and TP > gpusPerNode (divisible),
+a hierarchical AllReduce model replaces the flat ring:
+
+```
+effectiveBW = ((tp-1)/tp) / ((G-1)/G / nvlinkBW + (N-1)/N / ibBW)
+alpha = nvlinkAlpha × 2×2×ceil(log2(G)) + ibAlpha × 2×ceil(log2(N))
+```
+
+For TP=16 across 2×8 H100 nodes: effectiveBW ≈ 293 GB/s, alpha ≈ 110us/collective.
+Alpha dominates at batch=1 decode (252 collectives × 110us ≈ 27.7ms exposed).
+Same bandwidth formula as training (`3d-parallel.ts:1000`).
+
+Source: `src/core/inference/latency.ts:calculateLatencyWithTP()`
+
 ### W4A16 vs FP8 Compute Model
 
 The compute throughput used for the `max(memoryTime, computeTime)` roofline

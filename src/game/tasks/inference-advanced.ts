@@ -357,7 +357,7 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
     hints: [
       'Cost = (rate × numGPUs / 3600) / tokensPerSecond × 1e6. Check the GPU hourly rates in the sidebar — the L40S is significantly cheaper than the H100. Lower hourly cost means even moderate throughput can achieve good cost efficiency.',
       'INT4 quantization dramatically reduces weight memory. Calculate whether it enables a lower TP degree — and thus more replicas — on 48 GB GPUs. More replicas means linear throughput scaling.',
-      'FP8 is available on the L40S (Ada architecture). INT4 enables `TP=2` → 4 replicas. Combined with batching and paged attention, this maximizes throughput per dollar. The `PCIe` interconnect constrains TP — prefer fewer TP ranks with more replicas.',
+      'FP8 is available on the L40S (Ada architecture). INT4 enables `TP=2` → 4 replicas. Combined with batching, this maximizes throughput per dollar. The `PCIe` interconnect constrains TP — prefer fewer TP ranks with more replicas.',
     ],
     successExplanation:
       'Cost-per-token optimization is a holistic challenge that combines all inference techniques. ' +
@@ -384,11 +384,11 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'alone can consume tens of gigabytes per request, severely limiting batch size and throughput. ' +
       'LLaMA 3.1 405B supports up to 128K context. Configure a 16-GPU H100 setup to handle long-context ' +
       'inference. You will need to carefully manage memory: the model weights and KV cache must both fit, ' +
-      'and techniques like KV cache quantization and {{paged-attention|paged attention}} become essential.',
+      'and techniques like KV cache quantization become essential. {{paged-attention|Paged attention}} is already active — it eliminates KV cache fragmentation so memory scales with actual usage, not worst-case allocation.',
     concept: 'Long-Context Inference Memory Management',
     learningObjectives: [
       'Understand KV cache dominates memory at 128K+ context (can exceed weight memory per request)',
-      'Know compound optimization: TP + KV cache quantization + paged attention + weight quantization',
+      'Know compound optimization: TP + KV cache quantization + weight quantization work together',
       'Recognize prefix caching as a technique for shared system prompts, reusing KV cache across requests',
     ],
     setup: {
@@ -552,13 +552,13 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
       'This final challenge brings everything together. You are deploying LLaMA 3.1 405B — one of the largest ' +
       'dense models — on 16 H100 GPUs for production serving. Your goal is to achieve high throughput by ' +
       'combining every technique you have learned: tensor parallelism for model sharding, quantization for ' +
-      'memory efficiency, paged attention for KV cache management, {{speculative-decoding|speculative decoding}} for {{decode}} speedup, ' +
+      'memory efficiency, {{speculative-decoding|speculative decoding}} for {{decode}} speedup, ' +
       'and multi-replica serving if possible. Each technique contributes to the final throughput number, and ' +
       'the art is in how they compose together. A well-optimized 405B serving setup should push significant ' +
       'throughput on 16 H100s.',
     concept: 'Full-Stack Inference Optimization',
     learningObjectives: [
-      'Compose all techniques: TP, quantization, paged attention, spec decoding, multi-replica, continuous batching',
+      'Compose all techniques: TP, quantization, spec decoding, multi-replica, continuous batching',
       'Understand TP=8 x 2 replicas can beat TP=16 for throughput (avoid cross-node TP overhead)',
       'Know production frameworks (vLLM, TRT-LLM, SGLang) orchestrate these techniques automatically',
     ],
@@ -589,7 +589,7 @@ export const INFERENCE_ADVANCED_TASKS: GameTask[] = [
     hints: [
       'LLaMA 405B needs aggressive quantization to fit. Calculate per-GPU weight memory at FP8 with `TP=8` on one node — check if it fits in 80GB with room for KV cache. Cross-node TP (`TP=16`) is another option but adds IB communication overhead.',
       'Consider `TP=8` with 2 replicas (one per node) instead of `TP=16`. Two replicas double throughput while avoiding cross-node TP overhead. Batch each replica independently for maximum utilization.',
-      'Layer all optimizations: FP8 weights, FP8 KV cache, paged attention, flash attention, and speculative decoding with a small LLaMA draft model. Each optimization compounds — FP8 + speculation + multi-replica together can deliver dramatic throughput improvements.',
+      'Layer all optimizations: FP8 weights, FP8 KV cache, flash attention, continuous batching, and speculative decoding with a small LLaMA draft model. Each optimization compounds — FP8 + speculation + multi-replica together can deliver dramatic throughput improvements.',
     ],
     successExplanation:
       'Production-grade LLM serving is the composition of many techniques, each addressing a different ' +

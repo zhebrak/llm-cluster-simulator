@@ -44,6 +44,7 @@ import {
   STORED_LAYERS_CAPACITY_FRACTION,
 } from './base.ts';
 import { computeFSDPExposedComm, computeZeROGradOverlap, applyProtocolOverhead, BUCKET_SIZE_BYTES, PROTOCOL_OVERHEAD, PER_COLLECTIVE_OVERHEAD_MS } from './overlap.ts';
+import { getCollectiveBandwidth } from '../hardware/interconnect.ts';
 import {
   computeLoraTrainableParams,
   getQloraDequantTimeMs,
@@ -372,15 +373,15 @@ export class ZeROStrategy extends ParallelismStrategy {
     let bandwidth: number;
 
     if (cluster.numNodes === 1) {
-      bandwidth = cluster.node.intraNodeInterconnect.bandwidthGBps;
+      bandwidth = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
     } else {
       // Structural alignment with FSDP: use intra-node BW when sharding fits in one node
       const gpusPerNode = cluster.gpusPerNode;
       if (cluster.totalGPUs <= gpusPerNode) {
-        bandwidth = cluster.node.intraNodeInterconnect.bandwidthGBps;
+        bandwidth = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
       } else {
         bandwidth = Math.min(
-          cluster.node.intraNodeInterconnect.bandwidthGBps,
+          getCollectiveBandwidth(cluster.node.intraNodeInterconnect),
           cluster.interNodeBandwidthGBps
         );
       }

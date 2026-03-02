@@ -23,6 +23,7 @@ import type {
 } from '../../types/inference.ts';
 import { estimateTPOT, prefillFLOPs, getGPUTFLOPS, moeWeightBytesPerStep, calculateLatencyWithTP, getBandwidthEfficiency, getPrefillEfficiency } from './latency.ts';
 import { totalKVCacheMemory, getPrecisionBytes } from './kv-cache.ts';
+import { getIntraNodeInterconnect, getCollectiveBandwidth } from '../hardware/interconnect.ts';
 
 /**
  * Calculate expected number of accepted tokens
@@ -100,13 +101,16 @@ export function estimateDraftTime(
   precision: InferencePrecision = 'bf16',
   kvCachePrecision?: InferencePrecision,
   tpDegree: number = 1,
-  epDegree: number = 1
+  epDegree: number = 1,
+  gpusPerNode?: number,
+  interNodeBandwidthGBps?: number,
 ): number {
   const kvPrec = kvCachePrecision ?? precision;
   if (tpDegree > 1 || epDegree > 1) {
     // Use TP-aware TPOT for draft model running on same TP group
     const draftLatency = calculateLatencyWithTP(
-      draftModel, currentSeqLen, numTokens, batchSize, gpu, tpDegree, precision, epDegree, kvPrec
+      draftModel, currentSeqLen, numTokens, batchSize, gpu, tpDegree, precision, epDegree, kvPrec,
+      true, gpusPerNode, interNodeBandwidthGBps,
     );
     // Draft generates tokens sequentially: K × per-token latency
     return draftLatency.tpot * numTokens;
@@ -134,7 +138,9 @@ export function estimateVerificationTime(
   precision: InferencePrecision = 'bf16',
   kvCachePrecision?: InferencePrecision,
   tpDegree: number = 1,
-  _epDegree: number = 1
+  _epDegree: number = 1,
+  gpusPerNode?: number,
+  interNodeBandwidthGBps?: number,
 ): number {
   const kvPrec = kvCachePrecision ?? precision;
   const tp = Math.max(1, tpDegree);
@@ -165,7 +171,22 @@ export function estimateVerificationTime(
     // TP AllReduce overhead for verification (same as prefill AllReduce)
     const bytes = getPrecisionBytes(precision);
     const hiddenBytes = batchSize * numTokensToVerify * targetModel.hiddenSize * bytes;
-    const commBandwidthBps = (gpu.nvlinkBandwidthGBps || gpu.pcieBandwidthGBps) * 1e9;
+    // Use hierarchical bandwidth for cross-node TP
+    const crossesNodes = gpusPerNode !== undefined
+      && interNodeBandwidthGBps !== undefined
+      && tp > gpusPerNode
+      && tp % gpusPerNode === 0;
+    const ic = getIntraNodeInterconnect(gpu);
+    const intraNodeBW = getCollectiveBandwidth(ic);
+    let commBW: number;
+    if (crossesNodes) {
+      const G = gpusPerNode!;
+      const N = Math.ceil(tp / G);
+      commBW = ((tp - 1) / tp) / ((G - 1) / G / intraNodeBW + (N - 1) / N / interNodeBandwidthGBps!);
+    } else {
+      commBW = intraNodeBW;
+    }
+    const commBandwidthBps = commBW * 1e9;
     commOverhead = (hiddenBytes / commBandwidthBps) * 1000 * 2 * targetModel.numLayers;
   }
 
@@ -186,16 +207,20 @@ export function effectiveTPOTWithSpeculation(
   precision: InferencePrecision = 'bf16',
   kvCachePrecision?: InferencePrecision,
   tpDegree: number = 1,
-  epDegree: number = 1
+  epDegree: number = 1,
+  gpusPerNode?: number,
+  interNodeBandwidthGBps?: number,
 ): number {
   // Time for one speculation iteration
   const draftTime = estimateDraftTime(
-    draftModel, numSpeculativeTokens, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree
+    draftModel, numSpeculativeTokens, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree,
+    gpusPerNode, interNodeBandwidthGBps,
   );
 
   // Target verifies K+1 positions: K draft tokens + 1 bonus token
   const verifyTime = estimateVerificationTime(
-    targetModel, numSpeculativeTokens + 1, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree
+    targetModel, numSpeculativeTokens + 1, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree,
+    gpusPerNode, interNodeBandwidthGBps,
   );
 
   const iterationTime = draftTime + verifyTime;
@@ -220,7 +245,9 @@ export function calculateSpeculativeMetrics(
   kvCachePrecision?: InferencePrecision,
   tpDegree: number = 1,
   epDegree: number = 1,
-  baselineTPOTOverride?: number
+  baselineTPOTOverride?: number,
+  gpusPerNode?: number,
+  interNodeBandwidthGBps?: number,
 ): SpeculativeMetrics | null {
   if (!config.enabled || !config.draftModel) {
     return null;
@@ -231,13 +258,15 @@ export function calculateSpeculativeMetrics(
 
   // Draft time for K tokens (TP-aware when TP > 1)
   const draftModelOverhead = estimateDraftTime(
-    draftModel, numSpeculativeTokens, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree
+    draftModel, numSpeculativeTokens, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree,
+    gpusPerNode, interNodeBandwidthGBps,
   );
 
   // Verification time (TP-aware when TP > 1)
   // Target verifies K+1 positions: K draft tokens + 1 bonus token
   const verificationTime = estimateVerificationTime(
-    targetModel, numSpeculativeTokens + 1, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree
+    targetModel, numSpeculativeTokens + 1, currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree,
+    gpusPerNode, interNodeBandwidthGBps,
   );
 
   // Expected tokens
@@ -250,7 +279,8 @@ export function calculateSpeculativeMetrics(
     baselineTPOT = baselineTPOTOverride;
   } else if (tpDegree > 1 || epDegree > 1) {
     const tpLatency = calculateLatencyWithTP(
-      targetModel, currentSeqLen, 1, batchSize, gpu, tpDegree, precision, epDegree, kvPrec
+      targetModel, currentSeqLen, 1, batchSize, gpu, tpDegree, precision, epDegree, kvPrec,
+      true, gpusPerNode, interNodeBandwidthGBps,
     );
     baselineTPOT = tpLatency.tpot;
   } else {
@@ -448,7 +478,9 @@ export function findOptimalSpecConfig(
   precision: InferencePrecision = 'bf16',
   kvCachePrecision?: InferencePrecision,
   tpDegree: number = 1,
-  epDegree: number = 1
+  epDegree: number = 1,
+  gpusPerNode?: number,
+  interNodeBandwidthGBps?: number,
 ): {
   optimalK: number;
   expectedSpeedup: number;
@@ -462,7 +494,8 @@ export function findOptimalSpecConfig(
   let baselineTPOT: number;
   if (tpDegree > 1 || epDegree > 1) {
     baselineTPOT = calculateLatencyWithTP(
-      targetModel, currentSeqLen, 1, batchSize, gpu, tpDegree, precision, epDegree, kvPrec
+      targetModel, currentSeqLen, 1, batchSize, gpu, tpDegree, precision, epDegree, kvPrec,
+      true, gpusPerNode, interNodeBandwidthGBps,
     ).tpot;
   } else {
     baselineTPOT = estimateTPOT(targetModel, currentSeqLen, batchSize, gpu, precision, kvPrec);
@@ -471,7 +504,8 @@ export function findOptimalSpecConfig(
   for (let k = 1; k <= 16; k++) {
     const effectiveTpot = effectiveTPOTWithSpeculation(
       draftModel, targetModel, k, estimatedAcceptanceRate,
-      currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree
+      currentSeqLen, batchSize, gpu, precision, kvCachePrecision, tpDegree, epDegree,
+      gpusPerNode, interNodeBandwidthGBps,
     );
 
     const speedup = baselineTPOT / effectiveTpot;
@@ -538,7 +572,9 @@ export function isSpeculativeDecodingBeneficial(
   precision: InferencePrecision = 'bf16',
   kvCachePrecision?: InferencePrecision,
   tpDegree: number = 1,
-  epDegree: number = 1
+  epDegree: number = 1,
+  gpusPerNode?: number,
+  interNodeBandwidthGBps?: number,
 ): {
   beneficial: boolean;
   speedup: number;
@@ -558,7 +594,10 @@ export function isSpeculativeDecodingBeneficial(
     precision,
     kvCachePrecision,
     tpDegree,
-    epDegree
+    epDegree,
+    undefined,
+    gpusPerNode,
+    interNodeBandwidthGBps,
   );
 
   if (!metrics) {

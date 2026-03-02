@@ -1015,6 +1015,15 @@ export const useConfigStore = create<ConfigState>()(
             state.training.flashAttention = false;
             state.inference.flashAttention = false;
           }
+          // Auto-correct unsupported precisions
+          const gpu = clusterConfig.node.gpu;
+          if (state.precision === 'tf32' && !gpu.tf32TFLOPS) state.precision = 'fp16';
+          if (state.precision === 'bf16' && !gpu.bf16TFLOPS) state.precision = 'fp16';
+          if (state.precision === 'fp8' && !gpu.fp8TFLOPS) state.precision = gpu.bf16TFLOPS ? 'bf16' : 'fp16';
+          const wp = state.inference.weightPrecision;
+          if (wp === 'bf16' && !gpu.bf16TFLOPS) state.inference.weightPrecision = 'fp16';
+          if (wp === 'fp8' && !gpu.fp8TFLOPS) state.inference.weightPrecision = 'int8';
+          if (wp === 'fp4' && !gpu.fp4TFLOPS) state.inference.weightPrecision = 'int4';
           syncSnapshot(state);
         });
         // Clear stale simulation results
@@ -1038,6 +1047,11 @@ export const useConfigStore = create<ConfigState>()(
           state.gpuId = gpuId;
           state.numGPUs = numGPUs;
           state.gpusPerNode = gpusPerNode;
+          if (numGPUs === 1) {
+            state.training.tpDegree = 1;
+            state.training.ppDegree = 1;
+            state.training.cpDegree = 1;
+          }
           state.training.dpDegree = Math.floor(numGPUs / (state.training.tpDegree * state.training.ppDegree * state.training.cpDegree));
           // Recalculate gradient accumulation steps based on DP degree (not total GPUs)
           // GA = globalBatchSize / (microBatchSize * dpDegree)
@@ -1051,6 +1065,15 @@ export const useConfigStore = create<ConfigState>()(
             state.training.flashAttention = false;
             state.inference.flashAttention = false;
           }
+          // Auto-correct unsupported precisions
+          const gpu = clusterConfig.node.gpu;
+          if (state.precision === 'tf32' && !gpu.tf32TFLOPS) state.precision = 'fp16';
+          if (state.precision === 'bf16' && !gpu.bf16TFLOPS) state.precision = 'fp16';
+          if (state.precision === 'fp8' && !gpu.fp8TFLOPS) state.precision = gpu.bf16TFLOPS ? 'bf16' : 'fp16';
+          const wp = state.inference.weightPrecision;
+          if (wp === 'bf16' && !gpu.bf16TFLOPS) state.inference.weightPrecision = 'fp16';
+          if (wp === 'fp8' && !gpu.fp8TFLOPS) state.inference.weightPrecision = 'int8';
+          if (wp === 'fp4' && !gpu.fp4TFLOPS) state.inference.weightPrecision = 'int4';
           syncSnapshot(state);
         });
         // Clear stale simulation results

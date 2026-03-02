@@ -10,6 +10,7 @@
 import type { SimulationConfig } from './engine.ts';
 import type { ModelSpec } from '../../types/model.ts';
 import type { ClusterConfig } from '../../types/index.ts';
+import { gpuSupportsPrecision } from '../hardware/index.ts';
 
 export const MAX_EXPLORE_SIMS = 5000;
 export const MAX_EXPLORE_SIMS_MOE = 10000;
@@ -108,8 +109,9 @@ export function generateTrainingCandidates(
   // Never switch to FP8 during auto-optimize — FP8 affects MFU calculation
   // and should be an explicit user choice. But do allow downgrading from fp32
   // to bf16/fp16, which is always beneficial for training.
+  const gpu = cluster.node.gpu;
   const precisionValues: Array<SimulationConfig['mixedPrecision']> = currentPrecision === 'fp32'
-    ? ['bf16', 'fp16']
+    ? (['bf16', 'fp16'] as const).filter(p => gpuSupportsPrecision(gpu, p))
     : [currentPrecision];
 
   const candidates: SimulationConfig[] = [];

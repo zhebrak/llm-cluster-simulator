@@ -683,30 +683,50 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
 
   const gpuSupportsFA = config.clusterConfig ? supportsFlashAttention(config.clusterConfig.node.gpu) : true;
 
-  const precisionOptions = [
-    { value: 'fp32', label: 'FP32' },
-    { value: 'tf32', label: 'TF32' },
-    { value: 'fp16', label: 'FP16' },
-    { value: 'bf16', label: 'BF16' },
-    { value: 'fp8', label: 'FP8' },
-  ];
+  const gpu = config.clusterConfig?.node.gpu;
 
-  const quantizationOptions: SelectOption[] = [
-    // Standard / server quantization
-    { value: 'bf16', label: 'BF16 (no quant)', group: 'Standard' },
-    { value: 'fp16', label: 'FP16 (no quant)', group: 'Standard' },
-    { value: 'fp8', label: 'FP8 (native)', group: 'Standard' },
-    { value: 'fp4', label: 'FP4 (native)', group: 'Standard' },
-    { value: 'int8', label: 'INT8 (W8A8)', group: 'Standard' },
-    { value: 'int4', label: 'INT4 / GPTQ / AWQ', group: 'Standard' },
-    // GGUF quantization (llama.cpp / Ollama)
-    { value: 'q8_0', label: 'Q8_0 (8.5 bpw)', group: 'GGUF' },
-    { value: 'q6_k', label: 'Q6_K (6.6 bpw)', group: 'GGUF' },
-    { value: 'q5_k_m', label: 'Q5_K_M (5.7 bpw)', group: 'GGUF' },
-    { value: 'q4_k_m', label: 'Q4_K_M (4.8 bpw)', group: 'GGUF' },
-    { value: 'q3_k_m', label: 'Q3_K_M (3.9 bpw)', group: 'GGUF' },
-    { value: 'q2_k', label: 'Q2_K (3.0 bpw)', group: 'GGUF' },
-  ];
+  const precisionOptions = useMemo(() => {
+    const all = [
+      { value: 'fp32', label: 'FP32' },
+      { value: 'tf32', label: 'TF32' },
+      { value: 'fp16', label: 'FP16' },
+      { value: 'bf16', label: 'BF16' },
+      { value: 'fp8', label: 'FP8' },
+    ];
+    if (!gpu) return all;
+    return all.filter(o => {
+      if (o.value === 'tf32') return gpu.tf32TFLOPS > 0;
+      if (o.value === 'bf16') return gpu.bf16TFLOPS > 0;
+      if (o.value === 'fp8') return gpu.fp8TFLOPS > 0;
+      return true;
+    });
+  }, [gpu]);
+
+  const quantizationOptions: SelectOption[] = useMemo(() => {
+    const all: SelectOption[] = [
+      // Standard / server quantization
+      { value: 'bf16', label: 'BF16 (no quant)', group: 'Standard' },
+      { value: 'fp16', label: 'FP16 (no quant)', group: 'Standard' },
+      { value: 'fp8', label: 'FP8 (native)', group: 'Standard' },
+      { value: 'fp4', label: 'FP4 (native)', group: 'Standard' },
+      { value: 'int8', label: 'INT8 (W8A8)', group: 'Standard' },
+      { value: 'int4', label: 'INT4 / GPTQ / AWQ', group: 'Standard' },
+      // GGUF quantization (llama.cpp / Ollama)
+      { value: 'q8_0', label: 'Q8_0 (8.5 bpw)', group: 'GGUF' },
+      { value: 'q6_k', label: 'Q6_K (6.6 bpw)', group: 'GGUF' },
+      { value: 'q5_k_m', label: 'Q5_K_M (5.7 bpw)', group: 'GGUF' },
+      { value: 'q4_k_m', label: 'Q4_K_M (4.8 bpw)', group: 'GGUF' },
+      { value: 'q3_k_m', label: 'Q3_K_M (3.9 bpw)', group: 'GGUF' },
+      { value: 'q2_k', label: 'Q2_K (3.0 bpw)', group: 'GGUF' },
+    ];
+    if (!gpu) return all;
+    return all.filter(o => {
+      if (o.value === 'bf16') return gpu.bf16TFLOPS > 0;
+      if (o.value === 'fp8') return gpu.fp8TFLOPS > 0;
+      if (o.value === 'fp4') return gpu.fp4TFLOPS > 0;
+      return true;
+    });
+  }, [gpu]);
 
   const modeButtons: { mode: AppMode; label: string; icon: React.ReactNode }[] = [
     { mode: 'training', label: 'Training', icon: <Settings className="w-4 h-4" /> },

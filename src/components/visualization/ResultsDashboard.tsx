@@ -1009,6 +1009,7 @@ function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, 
           currentInputSeqLen={simInputSeqLen}
           gpuHourlyRate={effectiveRate}
           numGPUs={numGPUs}
+          gpu={gpu}
         />
         {modelSpec && gpu && (
           <RooflineChart

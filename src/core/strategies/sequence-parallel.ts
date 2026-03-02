@@ -41,6 +41,7 @@ import {
   STORED_LAYERS_CAPACITY_FRACTION,
 } from './base.ts';
 import { computeTPOverlap, applyProtocolOverhead } from './overlap.ts';
+import { getCollectiveBandwidth } from '../hardware/interconnect.ts';
 import {
   computeLoraParamsPerRank,
   getQloraDequantTimeMs,
@@ -245,11 +246,11 @@ export class SequenceParallelStrategy extends ParallelismStrategy {
     // TP/SP typically uses NVLink (within node), but cross-node TP uses hierarchical all-reduce
     let bandwidth: number;
     if (tp <= cluster.gpusPerNode) {
-      bandwidth = cluster.node.intraNodeInterconnect.bandwidthGBps;
+      bandwidth = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
     } else {
       const G = cluster.gpusPerNode;
       const N = Math.ceil(tp / G);
-      const nvBW = cluster.node.intraNodeInterconnect.bandwidthGBps;
+      const nvBW = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
       const ibBW = cluster.interNodeBandwidthGBps;
       bandwidth = ((tp - 1) / tp) / ((G - 1) / G / nvBW + (N - 1) / N / ibBW);
     }

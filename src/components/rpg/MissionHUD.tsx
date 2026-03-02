@@ -1,6 +1,7 @@
 /**
  * MissionHUD — in-mission overlay with briefing, objectives, and hints.
  * Sci-fi terminal aesthetic: amber (titles/nav/hints), teal (buttons/objectives), gray (body).
+ * Supports multi-objective missions with objective tabs.
  */
 
 import { useState, useEffect } from 'react';
@@ -12,6 +13,7 @@ import { CriteriaChecklist } from '../game/CriteriaChecklist.tsx';
 import { GlossaryText } from '../game/GlossaryText.tsx';
 import { Tooltip } from '../ui/Tooltip.tsx';
 import { ConfirmResetButton } from '../ui/ConfirmResetButton.tsx';
+import { useTheme } from '../../hooks/useTheme.ts';
 
 export function MissionHUD() {
   const activeMissionId = useRPGStore(s => s.activeMissionId);
@@ -23,8 +25,11 @@ export function MissionHUD() {
   const resetMission = useRPGStore(s => s.resetMission);
   const openMenu = useRPGStore(s => s.openMenu);
   const exit = useRPGStore(s => s.exit);
-  const acknowledgeMissionSuccess = useRPGStore(s => s.acknowledgeMissionSuccess);
   const reviewMissionSuccess = useRPGStore(s => s.reviewMissionSuccess);
+  const acknowledgeMissionSuccess = useRPGStore(s => s.acknowledgeMissionSuccess);
+  const activeObjectiveId = useRPGStore(s => s.activeObjectiveId);
+  const clearedObjectiveIds = useRPGStore(s => s.clearedObjectiveIds);
+  const selectObjective = useRPGStore(s => s.selectObjective);
 
   const [hudExpanded, setHudExpanded] = useState(true);
   const [activeHintIndex, setActiveHintIndex] = useState(0);
@@ -45,12 +50,50 @@ export function MissionHUD() {
   if (!mission) return null;
 
   const arc = ALL_ARCS.find(a => a.id === mission.arcId);
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const heroSrc = arc?.heroImage
+    ? (isDark ? arc.heroImage.dark : arc.heroImage.light)
+    : (isDark ? '/ship_dark.png' : '/ship_light.png');
   const totalHints = mission.hints.length;
   const hasMoreHints = hintsRevealed < totalHints;
-  const passed = lastValidation?.passed && approachValid;
+
+  const isMultiObjective = mission.objectives && mission.objectives.length > 0;
+  const allObjectivesCleared = isMultiObjective && mission.objectives!.every(o => clearedObjectiveIds.includes(o.id));
+
+  // For multi-objective: passed means active objective cleared OR all objectives cleared
+  // For single-objective: passed means all criteria met with correct approach
+  const activeObjCleared = activeObjectiveId ? clearedObjectiveIds.includes(activeObjectiveId) : false;
+  const passed = isMultiObjective
+    ? (allObjectivesCleared || (lastValidation?.passed && approachValid) || activeObjCleared)
+    : (lastValidation?.passed && approachValid);
+
+  // Get criteria for display
+  const displayCriteria = isMultiObjective && activeObjectiveId
+    ? mission.objectives!.find(o => o.id === activeObjectiveId)?.winningCriteria ?? []
+    : mission.winningCriteria;
 
   return (
-    <div className={`bg-gray-900/50 border border-gray-800 rounded-xl mt-0 mb-4 backdrop-blur-sm${!hudExpanded ? ' border-l-2 border-l-amber-500/50' : ''}`}>
+    <div className={`relative bg-gray-900/50 border border-gray-800 rounded-xl mt-0 mb-4 backdrop-blur-sm${!hudExpanded ? ' border-l-2 border-l-amber-500/50' : ''}`}>
+      {/* Chapter hero — atmospheric background behind breadcrumbs + title */}
+      <div
+        className="absolute inset-x-0 top-0 pointer-events-none overflow-hidden rounded-t-xl"
+        style={{ height: 140 }}
+      >
+        <img
+          src={heroSrc}
+          alt=""
+          className="w-full h-full object-cover object-[center_30%]"
+          style={{
+            opacity: 0.18,
+            maskImage: 'linear-gradient(to bottom, black 30%, transparent 100%), linear-gradient(to right, transparent 2%, black 15%, black 85%, transparent 98%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, black 30%, transparent 100%), linear-gradient(to right, transparent 2%, black 15%, black 85%, transparent 98%)',
+            maskComposite: 'intersect',
+            WebkitMaskComposite: 'source-in',
+          } as React.CSSProperties}
+        />
+      </div>
+
       {/* Top bar — always visible */}
       <div className="px-5 py-3 flex items-center gap-3">
         {/* Terminal breadcrumb — clickable to open mission select */}
@@ -96,9 +139,9 @@ export function MissionHUD() {
       {/* Expanded content */}
       <div
         className="transition-all duration-200 ease-in-out overflow-hidden"
-        style={{ maxHeight: hudExpanded ? '600px' : '0px', opacity: hudExpanded ? 1 : 0 }}
+        style={{ maxHeight: hudExpanded ? '700px' : '0px', opacity: hudExpanded ? 1 : 0 }}
       >
-        <div className="px-5 pb-4">
+        <div className="px-5 pb-4 overflow-hidden">
           <div className="border-t border-gray-800 mb-3" />
 
           {/* Title + attempts */}
@@ -113,48 +156,86 @@ export function MissionHUD() {
 
           {/* Briefing */}
           <div className="space-y-2 mb-3">
-            {mission.briefing.trim().split('\n\n').map((para, i) => (
-              <p key={i} className="text-sm text-gray-300/80 leading-relaxed font-mono">
-                <GlossaryText text={para.trim()} />
-              </p>
-            ))}
+            {mission.briefing.trim().split('\n\n').map((block, i) => {
+              const lines = block.trim().split('\n');
+              const isList = lines.every(l => l.trimStart().startsWith('- '));
+              if (isList) {
+                return (
+                  <ul key={i} className="space-y-1 ml-1 border-l-2 border-gray-700 pl-3">
+                    {lines.map((line, j) => (
+                      <li key={j} className="text-sm text-gray-300/80 leading-relaxed font-mono">
+                        <GlossaryText text={line.trimStart().slice(2)} />
+                      </li>
+                    ))}
+                  </ul>
+                );
+              }
+              return (
+                <p key={i} className="text-sm text-gray-300/80 leading-relaxed font-mono">
+                  <GlossaryText text={block.trim()} />
+                </p>
+              );
+            })}
           </div>
 
           <div className="border-t border-gray-800 mb-3" />
 
           {/* Objectives + Hints */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            {/* Objectives */}
-            <div className="flex-1">
-              <div className="text-sm text-gray-400 mb-1.5 font-mono">Objectives</div>
-              <div className="font-mono">
-                <CriteriaChecklist criteria={mission.winningCriteria} validation={lastValidation} />
-              </div>
-              {lastValidation?.passed && !approachValid && (
-                <div className="text-sm text-amber-200/90 bg-amber-900/20 border border-amber-700/30 rounded px-2.5 py-1.5 mt-2 font-mono">
-                  Target met, but not by the expected method. Re-read the briefing and try a different approach.
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* Left column: tabs + objectives */}
+            <div className="min-w-0">
+              {/* Multi-objective: Objective tabs */}
+              {isMultiObjective && (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {mission.objectives!.map(obj => {
+                    const isCleared = clearedObjectiveIds.includes(obj.id);
+                    const isActive = activeObjectiveId === obj.id;
+                    return (
+                      <button
+                        key={obj.id}
+                        onClick={() => selectObjective(obj.id)}
+                        className={`text-xs px-3 py-1.5 rounded-lg font-mono border transition-colors cursor-pointer flex items-start gap-1.5 min-w-0 text-left ${
+                          isCleared
+                            ? 'border-teal-500/40 text-teal-400 bg-teal-500/10'
+                            : isActive
+                              ? 'border-amber-500/50 text-amber-300 bg-amber-500/10'
+                              : 'border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+                        }`}
+                      >
+                        {isCleared && <Check className="w-3 h-3 shrink-0" />}
+                        <span>{obj.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-              {passed && (
-                <div className="flex items-center gap-2 mt-3 -ml-1">
-                  <button
-                    onClick={reviewMissionSuccess}
-                    className="text-sm text-gray-400 hover:text-white cursor-pointer transition-colors px-1 py-1 rounded font-mono"
-                  >
-                    Review
-                  </button>
-                  <button
-                    onClick={acknowledgeMissionSuccess}
-                    className="text-sm px-3 py-1 bg-teal-600 hover:bg-teal-500 text-white rounded cursor-pointer transition-colors font-mono"
-                  >
-                    Complete Mission
-                  </button>
-                </div>
+              {(!isMultiObjective || activeObjectiveId) && (
+                <>
+                  <div className="text-sm text-gray-400 mb-1.5 font-mono">Objectives</div>
+                  <div className="font-mono">
+                    <CriteriaChecklist criteria={displayCriteria} validation={lastValidation} cleared={activeObjCleared && !lastValidation} />
+                  </div>
+                  {lastValidation?.passed && !approachValid && (
+                    <div className="text-sm text-amber-200/90 bg-amber-900/20 border border-amber-700/30 rounded px-2.5 py-1.5 mt-2 font-mono">
+                      Target met, but not the way the briefing intended. Try a different approach.
+                    </div>
+                  )}
+                  {passed && (
+                    <div className="flex items-center gap-2 mt-3 -ml-1">
+                      <button
+                        onClick={isMultiObjective && !allObjectivesCleared ? acknowledgeMissionSuccess : reviewMissionSuccess}
+                        className="text-sm px-3 py-1 bg-teal-600 hover:bg-teal-500 text-white rounded cursor-pointer transition-colors font-mono"
+                      >
+                        {isMultiObjective && !allObjectivesCleared ? 'Complete Objective' : 'Complete Mission'}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             {/* Hints */}
-            <div className="flex-1">
+            <div className="min-w-0">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <span className="text-sm text-gray-400 font-mono">Hints</span>
                 {hintsRevealed > 1 && mission.hints.slice(0, hintsRevealed).map((_, i) => (
@@ -182,7 +263,7 @@ export function MissionHUD() {
               </div>
 
               {hintsRevealed > 0 && (
-                <div className="text-sm text-amber-200/80 bg-amber-900/20 border border-amber-700/30 rounded px-2.5 py-1.5 font-mono">
+                <div className="text-sm text-amber-200/80 bg-amber-900/20 border border-amber-700/30 rounded px-2.5 py-1.5 font-mono break-words">
                   <Lightbulb className="w-3.5 h-3.5 inline mr-1 text-amber-400" />
                   <GlossaryText text={mission.hints[activeHintIndex].trim()} />
                 </div>

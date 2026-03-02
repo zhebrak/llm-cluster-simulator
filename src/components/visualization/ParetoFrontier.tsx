@@ -17,6 +17,7 @@ import { formatLatency } from '../../types/base.ts';
 import { useSimulationStore } from '../../stores/simulation.ts';
 import { useConfigStore } from '../../stores/config.ts';
 import { Tooltip } from '../ui/Tooltip.tsx';
+import type { GPUSpec } from '../../types/hardware.ts';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -136,6 +137,7 @@ interface ParetoFrontierProps {
   currentInputSeqLen: number;
   gpuHourlyRate: number;
   numGPUs: number;
+  gpu: GPUSpec | null;
 }
 
 export function ParetoFrontier({
@@ -152,6 +154,7 @@ export function ParetoFrontier({
   currentInputSeqLen,
   gpuHourlyRate,
   numGPUs,
+  gpu,
 }: ParetoFrontierProps) {
   const [tab, setTab] = useState<'batch' | 'seqlen' | 'tpot'>('tpot');
   const [hovered, setHovered] = useState<HoverTarget | null>(null);
@@ -169,6 +172,14 @@ export function ParetoFrontier({
     });
   }, []);
 
+  // Precisions available on the current GPU
+  const legendPrecisions = useMemo(() => {
+    const precs: [string, string][] = [['bf16', 'BF16']];
+    if (gpu?.fp8TFLOPS && gpu.fp8TFLOPS > 0) precs.push(['fp8', 'FP8']);
+    precs.push(['int4', 'INT4'], ['q4_k_m', 'Q4_K_M'], ['q8_0', 'Q8_0']);
+    return precs;
+  }, [gpu]);
+
   // Responsive width
   useEffect(() => {
     const el = containerRef.current;
@@ -183,12 +194,16 @@ export function ParetoFrontier({
 
   const allPoints = useMemo(() => paretoResult?.points ?? [], [paretoResult]);
 
-  // Count points per precision group (unfiltered)
+  // Count points per precision group (unfiltered, only available precisions)
   const groupCounts = useMemo(() => {
-    const counts: Record<string, number> = { bf16: 0, fp8: 0, int4: 0, q4_k_m: 0, q8_0: 0 };
-    for (const p of allPoints) counts[precisionGroup(p.config.weightPrecision)]++;
+    const counts: Record<string, number> = {};
+    for (const [key] of legendPrecisions) counts[key] = 0;
+    for (const p of allPoints) {
+      const g = precisionGroup(p.config.weightPrecision);
+      if (g in counts) counts[g]++;
+    }
     return counts;
-  }, [allPoints]);
+  }, [allPoints, legendPrecisions]);
 
   // Filter by visible precisions
   const points = useMemo(() =>
@@ -514,14 +529,15 @@ export function ParetoFrontier({
 
   // Seq len sweep group counts (for legend)
   const seqLenGroupCounts = useMemo(() => {
-    const counts: Record<string, number> = { bf16: 0, fp8: 0, int4: 0, q4_k_m: 0, q8_0: 0 };
+    const counts: Record<string, number> = {};
+    for (const [key] of legendPrecisions) counts[key] = 0;
     if (seqLenSweepResult) {
       for (const [prec, pts] of Object.entries(seqLenSweepResult.groups)) {
-        counts[prec] = pts.length;
+        if (prec in counts) counts[prec] = pts.length;
       }
     }
     return counts;
-  }, [seqLenSweepResult]);
+  }, [seqLenSweepResult, legendPrecisions]);
 
   const sweeping = paretoProgress > 0 && paretoProgress < 1;
   const hasData = tab === 'batch' ? batchGroups.size > 0 : tab === 'seqlen' ? seqLenGroups.size > 0 : points.length > 0;
@@ -950,7 +966,7 @@ export function ParetoFrontier({
       {hasAnyData && (
         <div className="mt-auto pt-2 text-sm text-gray-400">
           <div className="flex flex-wrap items-center gap-3">
-            {([['bf16', 'BF16'], ['fp8', 'FP8'], ['int4', 'INT4'], ['q4_k_m', 'Q4_K_M'], ['q8_0', 'Q8_0']] as const).map(([key, label]) => {
+            {legendPrecisions.map(([key, label]) => {
               const count = tab === 'seqlen' ? (seqLenGroupCounts[key] ?? 0) : (groupCounts[key] ?? 0);
               const active = visiblePrecisions[key] !== false;
               const hasPoints = count > 0;

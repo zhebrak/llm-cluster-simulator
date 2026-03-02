@@ -236,6 +236,7 @@ export function buildValidationContext(
       speculative: result.speculative,
       continuousBatching: result.continuousBatching,
       maxConcurrentRequests: result.maxConcurrentRequests,
+      numReplicas: result.numReplicas,
       // Hardware context
       numGPUs,
       // Derived fields not in the engine output

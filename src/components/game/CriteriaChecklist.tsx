@@ -8,15 +8,16 @@ import type { WinningCriterion, ValidationResult } from '../../game/types.ts';
 interface CriteriaChecklistProps {
   criteria: WinningCriterion[];
   validation: ValidationResult | null;  // null = not yet evaluated
+  cleared?: boolean;  // all criteria passed (completed objective)
 }
 
-export function CriteriaChecklist({ criteria, validation }: CriteriaChecklistProps) {
+export function CriteriaChecklist({ criteria, validation, cleared }: CriteriaChecklistProps) {
   return (
     <ul className="space-y-1.5">
       {criteria.map((criterion, i) => {
         const result = validation?.results[i];
         const met = result?.met;
-        const state = validation === null ? 'pending' : met ? 'passed' : 'failed';
+        const state = cleared ? 'passed' : validation === null ? 'pending' : met ? 'passed' : 'failed';
 
         return (
           <li key={i} className="flex items-center gap-2 text-sm">

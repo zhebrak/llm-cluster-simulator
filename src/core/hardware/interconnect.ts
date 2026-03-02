@@ -144,6 +144,7 @@ export const INFINITY_FABRIC_SPECS: Record<string, InterconnectSpec> = {
     bidirectionalGBps: 400,
     latencyUs: 0.6,
     isFullDuplex: true,
+    collectiveBwScale: 0.50,  // heterogeneous intra/inter-card topology
   },
   'if-mi300': {
     type: 'nvlink', // Using nvlink type as closest equivalent
@@ -152,6 +153,7 @@ export const INFINITY_FABRIC_SPECS: Record<string, InterconnectSpec> = {
     bidirectionalGBps: 896,
     latencyUs: 0.5,
     isFullDuplex: true,
+    collectiveBwScale: 0.75,  // fully connected mesh, RCCL measured
   },
   'if-mi350': {
     type: 'nvlink', // Using nvlink type as closest equivalent for AMD IF
@@ -160,6 +162,7 @@ export const INFINITY_FABRIC_SPECS: Record<string, InterconnectSpec> = {
     bidirectionalGBps: 1075,
     latencyUs: 0.4,
     isFullDuplex: true,
+    collectiveBwScale: 0.75,  // fully connected mesh
   },
 };
 
@@ -272,26 +275,23 @@ export function getNvSwitchSpec(gpu: GPUSpec): InterconnectSpec | undefined {
 }
 
 /**
- * Calculate effective bandwidth considering topology
- * For NVSwitch: full bisection bandwidth
- * For ring NVLink: limited by ring structure
+ * Effective bandwidth for collective operations (AllReduce, AllGather,
+ * ReduceScatter, All-to-All). Mesh topologies without a central switch
+ * can't fully utilize aggregate link bandwidth for collectives —
+ * ring/multi-ring algorithms use a subset of links per step.
+ *
+ * Returns raw bandwidth when no mesh penalty applies (NVSwitch, PCIe,
+ * or interconnects without collectiveBwScale).
+ *
+ * NOT for P2P transfers (PP, CP ring) — those use a single link at
+ * full speed regardless of topology.
  */
-export function getEffectiveBandwidth(
+export function getCollectiveBandwidth(
   interconnect: InterconnectSpec,
-  _numGPUs: number,
-  hasNvSwitch: boolean
 ): number {
-  if (hasNvSwitch || interconnect.type === 'nvswitch') {
-    // Full bisection bandwidth with NVSwitch
-    return interconnect.bandwidthGBps;
+  if (interconnect.collectiveBwScale !== undefined) {
+    return interconnect.bandwidthGBps * interconnect.collectiveBwScale;
   }
-
-  if (interconnect.type === 'nvlink') {
-    // Ring topology: effective bandwidth is half for AllReduce
-    return interconnect.bandwidthGBps;
-  }
-
-  // For other interconnects, no scaling
   return interconnect.bandwidthGBps;
 }
 

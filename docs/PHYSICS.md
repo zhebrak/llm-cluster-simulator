@@ -638,6 +638,12 @@ effectiveBW = ((tp-1)/tp) / ((G-1)/G / nvlinkBW + (N-1)/N / ibBW)
 
 This models: ReduceScatter(NVLink) + AllReduce(IB) + AllGather(NVLink).
 
+**Inference** uses the same bandwidth formula (`latency.ts:calculateLatencyWithTP()`).
+The alpha model differs: inference uses per-phase tree-round latency
+(`nvlinkAlpha × 2×2×ceil(log2(G)) + ibAlpha × 2×ceil(log2(N))`, where ibAlpha = 25us)
+while training uses a flat per-collective overhead (`PER_COLLECTIVE_OVERHEAD_MS = 50us`
+in `overlap.ts`). Both converge for N=2 (2 IB rounds × 25us = 50us).
+
 ### FSDP standalone overhead
 
 **Source:** `fsdp.ts:computeTiming()`

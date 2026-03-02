@@ -58,8 +58,8 @@ export function TaskHUD() {
     <div className={`bg-gray-900/50 border border-gray-800 rounded-xl mt-0 mb-4 backdrop-blur-sm${!hudExpanded ? ' border-l-2 border-l-accent' : ''}`}>
       {/* Top bar — always visible */}
       <div className="px-5 py-3 flex items-center gap-3">
-        {/* Back to task list */}
-        <Tooltip text="Back to task list">
+        {/* To task list */}
+        <Tooltip text="To task list">
           <button
             onClick={() => openMenu('tasks')}
             className="text-gray-400 hover:text-gray-300 cursor-pointer p-1 flex-shrink-0"

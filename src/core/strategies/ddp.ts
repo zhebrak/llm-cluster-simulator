@@ -43,6 +43,7 @@ import {
   STORED_LAYERS_CAPACITY_FRACTION,
 } from './base.ts';
 import { computeDDPOverlap, applyProtocolOverhead, BUCKET_SIZE_BYTES } from './overlap.ts';
+import { getCollectiveBandwidth } from '../hardware/interconnect.ts';
 import {
   computeLoraTrainableParams,
   getQloraDequantTimeMs,
@@ -244,11 +245,11 @@ export class DDPStrategy extends ParallelismStrategy {
 
     if (cluster.numNodes === 1) {
       // Single node: use NVLink/NVSwitch bandwidth
-      bandwidth = cluster.node.intraNodeInterconnect.bandwidthGBps;
+      bandwidth = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
     } else {
       // Multi-node: limited by inter-node bandwidth
       bandwidth = Math.min(
-        cluster.node.intraNodeInterconnect.bandwidthGBps,
+        getCollectiveBandwidth(cluster.node.intraNodeInterconnect),
         cluster.interNodeBandwidthGBps
       );
     }

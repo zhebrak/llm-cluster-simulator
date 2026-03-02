@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { ALL_ARCS, ALL_MISSIONS, getMissionById, getMissionsForArc, isMissionUnlocked } from '../../src/rpg/missions/index.ts';
-import { ALL_SKILLS } from '../../src/rpg/skills.ts';
+import { ALL_SKILLS, getMissionsForSkill } from '../../src/rpg/skills.ts';
 import {
   runInferenceSimulation,
 } from '../../src/core/inference/simulation.ts';
@@ -17,6 +17,7 @@ import { evaluateCriterion } from '../../src/game/validation.ts';
 import { getGPUHourlyRate } from '../../src/core/cost/cloud.ts';
 import { calculateCostPerMillionTokens } from '../../src/core/cost/cloud.ts';
 import type { TaskSetup } from '../../src/game/types.ts';
+import { createMultiNodeCluster } from '../../src/core/hardware/topology.ts';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ function buildEffectiveInferenceConfig(setup: TaskSetup) {
     modelId: setup.modelId,
     gpuId: setup.gpuId,
     numGPUs: setup.numGPUs ?? 1,
+    gpusPerNode: setup.gpusPerNode ?? Math.min((setup.numGPUs ?? 1), 8),
     weightPrecision: setup.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
     kvCachePrecision: setup.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
     batchSize: setup.batchSize ?? INFERENCE_DEFAULTS.batchSize,
@@ -43,10 +45,14 @@ function buildEffectiveInferenceConfig(setup: TaskSetup) {
 }
 
 function runInference(cfg: ReturnType<typeof buildEffectiveInferenceConfig>) {
+  const gpusPerNode = cfg.gpusPerNode;
+  const numNodes = Math.ceil(cfg.numGPUs / gpusPerNode);
+  const cluster = createMultiNodeCluster(cfg.gpuId, gpusPerNode, numNodes);
   return runInferenceSimulation({
     modelId: cfg.modelId,
     gpuId: cfg.gpuId,
     numGPUs: cfg.numGPUs,
+    clusterConfig: cluster,
     batchSize: cfg.batchSize,
     inputSeqLen: cfg.inputSeqLen,
     outputSeqLen: cfg.outputSeqLen,
@@ -111,10 +117,18 @@ describe('RPG Mission Structure', () => {
     }
   });
 
-  it('non-pivot missions have at least one winning criterion', () => {
+  it('non-pivot missions have at least one winning criterion (or objectives with criteria)', () => {
     for (const mission of ALL_MISSIONS) {
       if (mission.type === 'pivot') continue;
-      expect(mission.winningCriteria.length, `Mission ${mission.id} has no criteria`).toBeGreaterThan(0);
+      // Multi-objective missions carry criteria on their objectives, not at top level
+      const isMultiObjective = mission.objectives && mission.objectives.length > 0;
+      if (isMultiObjective) {
+        for (const obj of mission.objectives!) {
+          expect(obj.winningCriteria.length, `Mission ${mission.id} objective ${obj.id} has no criteria`).toBeGreaterThan(0);
+        }
+      } else {
+        expect(mission.winningCriteria.length, `Mission ${mission.id} has no criteria`).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -152,6 +166,16 @@ describe('RPG Mission Structure', () => {
       for (const skillId of mission.skillsAwarded) {
         expect(ALL_SKILLS[skillId], `Mission ${mission.id} awards unknown skill ${skillId}`).toBeDefined();
       }
+    }
+  });
+
+  it('starLabels count matches number of missions awarding each skill', () => {
+    for (const [skillId, skill] of Object.entries(ALL_SKILLS)) {
+      const missions = getMissionsForSkill(skillId);
+      expect(
+        skill.starLabels.length,
+        `Skill ${skillId} has ${skill.starLabels.length} starLabels but ${missions.length} missions award it`,
+      ).toBe(missions.length);
     }
   });
 
@@ -239,7 +263,7 @@ describe('RPG Mission Calibration', () => {
     });
   });
 
-  describe('Mission 1-2: The Wrong Model', () => {
+  describe('Mission 1-2: The Upgrade', () => {
     const mission = getMissionById('mission-1-2')!;
 
     it('default setup (70B on RTX 4090) → OOM at any precision', () => {
@@ -318,14 +342,34 @@ describe('RPG Mission Calibration', () => {
   describe('Mission 1-5: Memory Leak', () => {
     const mission = getMissionById('mission-1-5')!;
 
-    it('default setup (seqLen=32768, FA=off) → OOM', () => {
+    it('default setup (seqLen=131072, FA=off) → OOM', () => {
       const ctx = buildInferenceContext(mission.setup);
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(false);
     });
 
-    it('enable Flash Attention → success', () => {
+    it('FA alone (seqLen=131072) → still OOM', () => {
       const ctx = buildInferenceContext({ ...mission.setup, flashAttention: true });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(false);
+    });
+
+    it('FA + KV int8 → success', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup, flashAttention: true, kvCachePrecision: 'int8',
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+
+      for (const criterion of mission.winningCriteria) {
+        expect(evaluateCriterion(ctx, criterion), `Criterion: ${criterion.label}`).toBe(true);
+      }
+    });
+
+    it('FA + KV fp8 → success', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup, flashAttention: true, kvCachePrecision: 'fp8',
+      });
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
 

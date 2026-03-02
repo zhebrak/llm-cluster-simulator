@@ -90,6 +90,11 @@ export interface InterconnectSpec {
   bidirectionalGBps: number;   // Bidirectional bandwidth GB/s
   latencyUs: number;           // Base latency in microseconds
   isFullDuplex: boolean;
+  /** Fraction of raw bandwidth available for collective operations on mesh
+   *  topologies without a central switch. Only set on interconnects where
+   *  mesh topology limits collective utilization (e.g., AMD Infinity Fabric).
+   *  Absent = no penalty (switch fabric or irrelevant). */
+  collectiveBwScale?: number;
 }
 
 // NVLink versions

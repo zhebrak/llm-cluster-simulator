@@ -11,6 +11,18 @@ export interface RPGArc {
   subtitle: string;     // 'The ship is old. Systems are failing.'
   description: string;
   order: number;
+  closureText?: string; // Shown in ArcComplete modal when all missions done
+  briefing?: string;       // Arc intro briefing shown in [BRIEFING] modal
+  heroImage?: { dark: string; light: string }; // Hero image override
+}
+
+export interface MissionObjective {
+  id: string;                         // 'obj-train', 'obj-infer'
+  label: string;                      // "Training: Protein model fine-tune"
+  primaryMode: 'training' | 'inference';
+  setup: TaskSetup;
+  winningCriteria: WinningCriterion[];
+  expectedChanges?: ExpectedChange[];
 }
 
 export interface RPGMission {
@@ -31,6 +43,9 @@ export interface RPGMission {
   expectedChanges?: ExpectedChange[];
   hints: string[];
 
+  /** Multi-objective missions: each objective has its own mode/setup/criteria. */
+  objectives?: MissionObjective[];
+
   prerequisites: string[];   // mission IDs (DAG edges)
   skillsAwarded: string[];   // skill IDs earned on completion
 }
@@ -39,4 +54,5 @@ export interface RPGSkill {
   id: string;
   name: string;
   description: string;
+  starLabels: string[];  // one per star, ordered by mission progression
 }

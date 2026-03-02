@@ -10,7 +10,7 @@ import type {
   InterconnectSpec,
 } from '../../types/index.ts';
 import { getGPU, getEffectiveTFLOPS } from './gpu.ts';
-import { getIntraNodeInterconnect, getNvSwitchSpec } from './interconnect.ts';
+import { getIntraNodeInterconnect, getNvSwitchSpec, getPerNicBandwidthGBps } from './interconnect.ts';
 import { INFINIBAND_SPECS } from '../../types/index.ts';
 
 /**
@@ -63,7 +63,8 @@ export function createCluster(
     totalGPUs,
     node,
     topology,
-    interNodeBandwidthGBps: node.interNodeInterconnect.bandwidthGBps,
+    interNodeBandwidthGBps: node.numNICs
+      * getPerNicBandwidthGBps(node.interNodeInterconnect, node.numNICs),
     interNodeLatencyUs: node.interNodeInterconnect.latencyUs,
     totalMemoryGB,
     totalTFLOPS,

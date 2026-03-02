@@ -73,7 +73,7 @@ import {
   NF4_BYTES_PER_PARAM,
 } from './lora.ts';
 import { getMatmulSaturationFactor, getGroupedGemmEfficiency } from '../hardware/gpu.ts';
-import { getPerNicBandwidthGBps } from '../hardware/interconnect.ts';
+import { getPerNicBandwidthGBps, getCollectiveBandwidth } from '../hardware/interconnect.ts';
 import { cpCausalWorkDistribution } from '../physics/derived.ts';
 
 // =========================================================================
@@ -804,7 +804,7 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
       const activationDtype = training.dtypes.activation;
       const epWithinNode = ep * tp <= cluster.gpusPerNode;
       const epBandwidth = epWithinNode
-        ? cluster.node.intraNodeInterconnect.bandwidthGBps
+        ? getCollectiveBandwidth(cluster.node.intraNodeInterconnect)
         : cluster.interNodeBandwidthGBps;
       // Routing locality: same model as computeCommunication() — see detailed comment there.
       // min(densityLocality, deviceLimit/ep) when device-limited routing is available.
@@ -987,7 +987,7 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
     // TP typically uses NVLink (within node), but cross-node TP uses hierarchical all-reduce
     let tpBandwidth: number;
     if (tp <= cluster.gpusPerNode) {
-      tpBandwidth = cluster.node.intraNodeInterconnect.bandwidthGBps;
+      tpBandwidth = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
     } else {
       // Hierarchical all-reduce: RS(NVLink) + AR(IB) + AG(NVLink)
       // Total time = 2*(G-1)/G * D/nvBW + 2*(N-1)/N * D/ibBW
@@ -995,7 +995,7 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
       //   (tp-1)/tp / ((G-1)/G / nvBW + (N-1)/N / ibBW)
       const G = cluster.gpusPerNode;
       const N = Math.ceil(tp / G);
-      const nvBW = cluster.node.intraNodeInterconnect.bandwidthGBps;
+      const nvBW = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
       const ibBW = cluster.interNodeBandwidthGBps;
       tpBandwidth = ((tp - 1) / tp) / ((G - 1) / G / nvBW + (N - 1) / N / ibBW);
     }
@@ -1023,7 +1023,7 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
     // dpRanksPerNode = how many DP ranks fit in one node after TP and PP.
     const dpRanksPerNode = stagesPerNode >= pp ? Math.floor(stagesPerNode / pp) : 0;
     const baseDPBW = dpRanksPerNode >= dp
-      ? cluster.node.intraNodeInterconnect.bandwidthGBps   // all DP intra-node
+      ? getCollectiveBandwidth(cluster.node.intraNodeInterconnect)   // all DP intra-node
       : cluster.interNodeBandwidthGBps;                      // DP crosses nodes
 
     // DP uses IB across nodes — bandwidth degrades at large DP group sizes.

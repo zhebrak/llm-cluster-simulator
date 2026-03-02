@@ -63,8 +63,16 @@ export function RPGOverlay() {
   const showArcComplete = useRPGStore(s => s.showArcComplete);
   const menuOpen = useRPGStore(s => s.menuOpen);
   const missionSelectDismissed = useRPGStore(s => s.missionSelectDismissed);
+  const clearedObjectiveIds = useRPGStore(s => s.clearedObjectiveIds);
+  const activeObjectiveId = useRPGStore(s => s.activeObjectiveId);
 
   const mission = activeMissionId ? getMissionById(activeMissionId) : null;
+  const allObjectivesCleared = mission?.objectives?.length
+    ? mission.objectives.every(o => clearedObjectiveIds.includes(o.id))
+    : false;
+  const activeObjCleared = mission?.objectives?.length
+    ? activeObjectiveId != null && clearedObjectiveIds.includes(activeObjectiveId)
+    : false;
 
   const overlayKind = deriveOverlayState({
     active,
@@ -74,7 +82,7 @@ export function RPGOverlay() {
     activeMissionId,
     activeMissionType: mission?.type ?? (activeMissionId ? 'mission' : undefined),
     missionSelectDismissed,
-    passed: lastValidation?.passed ?? false,
+    passed: (lastValidation?.passed ?? false) || allObjectivesCleared || activeObjCleared,
     approachValid,
     successDismissed,
     menuOpen,

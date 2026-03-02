@@ -26,8 +26,8 @@ export const HARDWARE_PROGRESSION: HardwareTier[] = [
     name: 'Original Compute Bay',
     description: "The ship's 80-year-old hardware, still running",
     gpus: [
-      { gpuId: 't4', count: 4, label: 'T4 16GB' },
-      { gpuId: 'rtx-4090', count: 2, label: 'RTX 4090 24GB' },
+      { gpuId: 't4', count: 2, label: 'T4 16GB' },
+      { gpuId: 'rtx-4090', count: 4, label: 'RTX 4090 24GB' },
     ],
     unlockedBy: null,
   },
@@ -40,7 +40,44 @@ export const HARDWARE_PROGRESSION: HardwareTier[] = [
     ],
     unlockedBy: 'mission-1-6',
   },
+
+  // ── Arc 2: Discovery ──────────────────────────────────────────────
+  {
+    id: 'derelict-station',
+    name: 'Derelict Relay Station',
+    description: 'An abandoned station drifting near the ship — 4 more A100 GPUs still functional',
+    gpus: [
+      { gpuId: 'a100-80gb', count: 4, label: 'A100 80GB' },
+    ],
+    unlockedBy: 'mission-2-2',
+  },
+  {
+    id: 'resupply-drone',
+    name: 'Earth Resupply Drone',
+    description: 'A cargo drone from Earth — two sealed compute modules with H100 GPUs',
+    gpus: [
+      { gpuId: 'h100-sxm', count: 16, label: 'H100 SXM 80GB' },
+    ],
+    unlockedBy: 'mission-2-7',
+  },
+
+  // ── Arc 3: Wonder ───────────────────────────────────────────────────
+  {
+    id: 'planetary-forge',
+    name: 'Planetary Fabrication Forge',
+    description: 'Kepler-442b surface minerals include semiconductor-grade silicates. Chief Engineer Okafor has been fabricating compute modules since orbital insertion — 62 full nodes, assembled and tested.',
+    gpus: [
+      { gpuId: 'h100-sxm', count: 496, label: 'H100 SXM 80GB' },
+    ],
+    unlockedBy: 'mission-3-1',
+  },
 ];
+
+function getUnlockedTiers(completedMissions: string[]): HardwareTier[] {
+  return HARDWARE_PROGRESSION.filter(
+    tier => tier.unlockedBy === null || completedMissions.includes(tier.unlockedBy),
+  );
+}
 
 /**
  * Get all available hardware tiers based on mission progression.
@@ -48,38 +85,12 @@ export const HARDWARE_PROGRESSION: HardwareTier[] = [
  * or is null (starting hardware).
  */
 export function getAvailableHardware(completedMissions: string[]): HardwareSlot[] {
-  const slots: HardwareSlot[] = [];
-
-  for (const tier of HARDWARE_PROGRESSION) {
-    if (tier.unlockedBy === null) {
-      slots.push(...tier.gpus);
-      continue;
-    }
-
-    if (completedMissions.includes(tier.unlockedBy)) {
-      slots.push(...tier.gpus);
-    }
-  }
-
-  return slots;
+  return getUnlockedTiers(completedMissions).flatMap(tier => tier.gpus);
 }
 
 /**
  * Get available tier IDs for hardware-seen tracking.
  */
 export function getAvailableTierIds(completedMissions: string[]): string[] {
-  const ids: string[] = [];
-
-  for (const tier of HARDWARE_PROGRESSION) {
-    if (tier.unlockedBy === null) {
-      ids.push(tier.id);
-      continue;
-    }
-
-    if (completedMissions.includes(tier.unlockedBy)) {
-      ids.push(tier.id);
-    }
-  }
-
-  return ids;
+  return getUnlockedTiers(completedMissions).map(tier => tier.id);
 }

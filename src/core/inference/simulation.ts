@@ -11,7 +11,7 @@
 import type { ModelSpec } from '../../types/model.ts';
 import { bytesToGB } from '../../types/base.ts';
 import { gpuCapacityBytes } from '../strategies/base.ts';
-import type { GPUSpec } from '../../types/hardware.ts';
+import type { GPUSpec, ClusterConfig } from '../../types/hardware.ts';
 import type {
   InferencePrecision,
   InferenceConfig,
@@ -72,6 +72,9 @@ export interface InferenceSimulationConfig {
 
   // Batching
   continuousBatching?: boolean;
+
+  // Cluster topology (for cross-node TP modeling)
+  clusterConfig?: ClusterConfig;
 
   // Speculative decoding
   speculativeEnabled?: boolean;
@@ -161,6 +164,7 @@ export class InferenceSimulationEngine {
       flashAttention: (input.flashAttention ?? DEFAULT_INFERENCE_CONFIG.flashAttention!) && supportsFlashAttention(gpu),
       pagedAttention: input.pagedAttention ?? DEFAULT_INFERENCE_CONFIG.pagedAttention!,
       continuousBatching: input.continuousBatching ?? false,
+      clusterConfig: input.clusterConfig,
       tensorParallel: input.tensorParallel,
       expertParallel: input.expertParallel,
       speculative: {
@@ -316,6 +320,7 @@ export class InferenceSimulationEngine {
           bottleneck: 'memory_capacity',
         },
         maxConcurrentRequests: 0,
+        numReplicas: this.numReplicas,
         errors: validation.errors,
         warnings: validation.warnings,
         recommendations: [],
@@ -383,7 +388,9 @@ export class InferenceSimulationEngine {
         this.config.kvCachePrecision,
         tp,
         ep,
-        effectiveMetrics.latency.tpot
+        effectiveMetrics.latency.tpot,
+        this.config.clusterConfig?.gpusPerNode,
+        this.config.clusterConfig?.interNodeBandwidthGBps,
       ) ?? undefined;
     }
 
@@ -447,6 +454,7 @@ export class InferenceSimulationEngine {
       speculative,
       continuousBatching: this.config.continuousBatching || undefined,
       maxConcurrentRequests,
+      numReplicas: this.numReplicas,
       errors: [],
       warnings: validation.warnings,
       recommendations: [],

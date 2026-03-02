@@ -49,7 +49,7 @@ export function LevelCompleteModal({ mode, difficulty, onBack, onReplay }: Level
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Levels
+            To Levels
           </button>
         </div>
       </div>

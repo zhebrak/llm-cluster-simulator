@@ -206,6 +206,7 @@ export interface InferenceSimulationResult {
   // Derived metrics
   costPerMillionTokens?: number;
   maxConcurrentRequests: number;
+  numReplicas: number;
 
   // Validation
   errors: string[];

@@ -19,13 +19,13 @@ import type { ValidationResult } from '../game/types.ts';
 import type { TaskConfigSnapshot } from '../game/validation.ts';
 import { buildValidationContext, validateTask, captureTaskConfig, validateExpectedChanges } from '../game/validation.ts';
 import { applySetupToConfig } from '../game/setup.ts';
+import { CONFIG_STORAGE_KEY } from '../game/constants.ts';
 import { RPG_STORAGE_KEY, PRE_RPG_CONFIG_KEY } from '../rpg/constants.ts';
-import { getMissionById, getMissionsForArc, isMissionUnlocked } from '../rpg/missions/index.ts';
+import { getMissionById, getMissionsForArc, isMissionUnlocked, ALL_ARCS, ALL_MISSIONS } from '../rpg/missions/index.ts';
+import { HARDWARE_PROGRESSION } from '../rpg/hardware.ts';
 import { useConfigStore } from './config.ts';
 import { useSimulationStore } from './simulation.ts';
 import { useGameStore, _registerRPGStore } from './game.ts';
-
-const CONFIG_STORAGE_KEY = 'llm-sim-config';
 
 interface RPGState {
   // Core
@@ -39,13 +39,17 @@ interface RPGState {
   approachValid: boolean;
   lastValidatedRunCounter: number;
 
+  // Multi-objective state
+  activeObjectiveId: string | null;
+  clearedObjectiveIds: string[];
+
   // Progression
   completedMissions: string[];      // mission IDs
-  earnedSkills: string[];           // skill IDs
   missionStates: Record<string, {   // per-mission saved state
     hintsRevealed: number;
     attempts: number;
     lastValidation: ValidationResult | null;
+    clearedObjectiveIds?: string[];
   }>;
 
   // Intro briefing
@@ -84,7 +88,8 @@ interface RPGState {
   dismissIntro: () => void;
   showBriefing: () => void;
   markHardwareSeen: (ids: string[]) => void;
-  resetProgress: () => void;
+  resetProgress: (arcId: string) => void;
+  selectObjective: (objectiveId: string) => void;
 }
 
 // ── Persistence helpers ──────────────────────────────────────────────────
@@ -97,7 +102,6 @@ function persistRPGState(state: RPGState): void {
       hintsRevealed: state.hintsRevealed,
       attempts: state.attempts,
       completedMissions: state.completedMissions,
-      earnedSkills: state.earnedSkills,
       missionStates: state.missionStates,
       savedConfigSnapshot: state.savedConfigSnapshot,
       taskConfigSnapshot: state.taskConfigSnapshot,
@@ -105,6 +109,8 @@ function persistRPGState(state: RPGState): void {
       lastMissionId: state.lastMissionId,
       introSeen: state.introSeen,
       seenHardwareTierIds: state.seenHardwareTierIds,
+      activeObjectiveId: state.activeObjectiveId,
+      clearedObjectiveIds: state.clearedObjectiveIds,
     };
     localStorage.setItem(RPG_STORAGE_KEY, JSON.stringify(toSave));
   } catch { /* localStorage full or unavailable */ }
@@ -137,16 +143,19 @@ function restoreMissionState(state: RPGState, missionId: string): void {
     state.attempts = saved.attempts;
     state.lastValidation = saved.lastValidation;
     state.successDismissed = true;
+    state.clearedObjectiveIds = saved.clearedObjectiveIds ?? [];
   } else if (saved) {
     state.hintsRevealed = saved.hintsRevealed;
     state.attempts = saved.attempts;
     state.lastValidation = saved.lastValidation;
     state.successDismissed = false;
+    state.clearedObjectiveIds = saved.clearedObjectiveIds ?? [];
   } else {
     state.hintsRevealed = 0;
     state.attempts = 0;
     state.lastValidation = null;
     state.successDismissed = false;
+    state.clearedObjectiveIds = [];
   }
 }
 
@@ -156,6 +165,7 @@ function saveMissionState(state: RPGState): void {
       hintsRevealed: state.hintsRevealed,
       attempts: state.attempts,
       lastValidation: state.lastValidation,
+      clearedObjectiveIds: state.clearedObjectiveIds.length > 0 ? state.clearedObjectiveIds : undefined,
     };
   }
 }
@@ -184,8 +194,9 @@ export const useRPGStore = create<RPGState>()(
     lastValidation: null,
     approachValid: true,
     lastValidatedRunCounter: persisted.lastValidatedRunCounter ?? 0,
+    activeObjectiveId: (persisted as Record<string, unknown>).activeObjectiveId as string | null ?? null,
+    clearedObjectiveIds: (persisted as Record<string, unknown>).clearedObjectiveIds as string[] ?? [],
     completedMissions: persisted.completedMissions ?? [],
-    earnedSkills: persisted.earnedSkills ?? [],
     missionStates: persisted.missionStates ?? {},
     introSeen: (persisted as Record<string, unknown>).introSeen as boolean ?? false,
     seenHardwareTierIds: (persisted as Record<string, unknown>).seenHardwareTierIds as string[] ?? [],
@@ -266,6 +277,8 @@ export const useRPGStore = create<RPGState>()(
         state.approachValid = true;
         state.lastValidatedRunCounter = 0;
         state.successDismissed = false;
+        state.activeObjectiveId = null;
+        state.clearedObjectiveIds = [];
       });
 
       try {
@@ -299,6 +312,8 @@ export const useRPGStore = create<RPGState>()(
           state.lastValidation = null;
           state.successDismissed = false;
           state.lastValidatedRunCounter = 0;
+          state.activeObjectiveId = null;
+          state.clearedObjectiveIds = [];
         });
         persistRPGState(get());
         return;
@@ -314,6 +329,13 @@ export const useRPGStore = create<RPGState>()(
 
         restoreMissionState(state, id);
         state.lastValidatedRunCounter = 0;
+
+        // Multi-objective: initialize objective state
+        if (mission.objectives && mission.objectives.length > 0) {
+          state.activeObjectiveId = null; // Player picks an objective
+        } else {
+          state.activeObjectiveId = null;
+        }
       });
 
       // Apply mission setup to config
@@ -330,15 +352,49 @@ export const useRPGStore = create<RPGState>()(
       persistRPGState(get());
     },
 
-    resetMission: () => {
+    selectObjective: (objectiveId: string) => {
       const { activeMissionId } = get();
+      if (!activeMissionId) return;
+
+      const mission = getMissionById(activeMissionId);
+      if (!mission || !mission.objectives) return;
+
+      const objective = mission.objectives.find(o => o.id === objectiveId);
+      if (!objective) return;
+
+      // Apply objective's setup and mode
+      applySetupToConfig(objective.setup, objective.primaryMode);
+
+      const snapshot = captureTaskConfig();
+      set(state => {
+        state.activeObjectiveId = objectiveId;
+        state.taskConfigSnapshot = snapshot;
+        state.approachValid = true;
+        state.lastValidation = null;
+        state.lastValidatedRunCounter = 0;
+      });
+
+      useSimulationStore.getState().reset();
+      persistRPGState(get());
+    },
+
+    resetMission: () => {
+      const { activeMissionId, activeObjectiveId } = get();
       if (!activeMissionId) return;
 
       const mission = getMissionById(activeMissionId);
       if (!mission) return;
 
-      // Re-apply setup
-      applySetupToConfig(mission.setup, mission.primaryMode);
+      // Multi-objective: reset active objective's setup
+      if (mission.objectives && activeObjectiveId) {
+        const objective = mission.objectives.find(o => o.id === activeObjectiveId);
+        if (objective) {
+          applySetupToConfig(objective.setup, objective.primaryMode);
+        }
+      } else {
+        // Single-objective: re-apply mission setup
+        applySetupToConfig(mission.setup, mission.primaryMode);
+      }
 
       const snapshot = captureTaskConfig();
       set(state => {
@@ -366,25 +422,58 @@ export const useRPGStore = create<RPGState>()(
     },
 
     acknowledgeMissionSuccess: () => {
-      const { activeMissionId } = get();
+      const { activeMissionId, activeObjectiveId, clearedObjectiveIds } = get();
       if (!activeMissionId) return;
 
       const mission = getMissionById(activeMissionId);
       if (!mission) return;
 
+      // Multi-objective: handle per-objective completion
+      let pendingClear: string[] | null = null;
+      if (mission.objectives && mission.objectives.length > 0 && activeObjectiveId) {
+        const newCleared = [...clearedObjectiveIds];
+        if (!newCleared.includes(activeObjectiveId)) {
+          newCleared.push(activeObjectiveId);
+        }
+
+        const allObjectivesCleared = mission.objectives.every(o => newCleared.includes(o.id));
+
+        if (!allObjectivesCleared) {
+          // Mid-mission objective clear: advance to next uncompleted objective
+          const nextObjective = mission.objectives.find(o => !newCleared.includes(o.id));
+          set(state => {
+            state.clearedObjectiveIds = newCleared;
+            state.activeObjectiveId = null;
+            state.lastValidation = null;
+            state.lastValidatedRunCounter = 0;
+            state.successDismissed = false;
+            saveMissionState(state);
+          });
+          persistRPGState(get());
+          if (nextObjective) {
+            get().selectObjective(nextObjective.id);
+          }
+          return;
+        }
+
+        // All objectives cleared — fall through to full mission completion
+        pendingClear = newCleared;
+      }
+
+      // Full mission success
       set(state => {
+        // Apply pending objective clear if coming from last-objective completion
+        if (pendingClear) {
+          state.clearedObjectiveIds = pendingClear;
+          state.activeObjectiveId = null;
+          state.lastValidation = null;
+          state.lastValidatedRunCounter = 0;
+        }
         saveMissionState(state);
 
         // Record completion
         if (!state.completedMissions.includes(activeMissionId)) {
           state.completedMissions.push(activeMissionId);
-        }
-
-        // Award skills
-        for (const skillId of mission.skillsAwarded) {
-          if (!state.earnedSkills.includes(skillId)) {
-            state.earnedSkills.push(skillId);
-          }
         }
 
         // Check if arc is now fully complete
@@ -394,16 +483,37 @@ export const useRPGStore = create<RPGState>()(
         );
 
         if (allComplete) {
-          state.showArcComplete = mission.arcId;
+          const arcHasPivot = arcMissions.some(m => m.type === 'pivot');
+          if (!arcHasPivot) {
+            state.showArcComplete = mission.arcId;
+          }
           state.activeMissionId = null;
         } else {
-          // Advance to next unlocked mission in arc
-          const nextMission = arcMissions.find(m =>
+          // Pivot priority: if the arc's pivot is now unlocked, auto-start cutscene
+          const arcPivot = arcMissions.find(m =>
+            m.type === 'pivot' &&
             !state.completedMissions.includes(m.id) &&
             isMissionUnlocked(m, state.completedMissions)
           );
-          state.activeMissionId = null; // go back to mission select
-          state.lastMissionId = nextMission?.id ?? null;
+
+          if (arcPivot) {
+            state.activeMissionId = arcPivot.id;
+            state.lastMissionId = arcPivot.id;
+          } else {
+            // No pivot available — find next unlocked regular mission
+            let nextMission = arcMissions.find(m =>
+              !state.completedMissions.includes(m.id) &&
+              isMissionUnlocked(m, state.completedMissions)
+            );
+            if (!nextMission) {
+              nextMission = ALL_MISSIONS.find(m =>
+                !state.completedMissions.includes(m.id) &&
+                isMissionUnlocked(m, state.completedMissions)
+              );
+            }
+            state.activeMissionId = null;
+            state.lastMissionId = nextMission?.id ?? null;
+          }
         }
 
         state.successDismissed = false;
@@ -412,6 +522,8 @@ export const useRPGStore = create<RPGState>()(
         state.attempts = 0;
         state.lastValidation = null;
         state.lastValidatedRunCounter = 0;
+        state.activeObjectiveId = null;
+        state.clearedObjectiveIds = [];
       });
 
       persistRPGState(get());
@@ -472,20 +584,51 @@ export const useRPGStore = create<RPGState>()(
       persistRPGState(get());
     },
 
-    resetProgress: () => {
+    resetProgress: (arcId: string) => {
+      const arc = ALL_ARCS.find(a => a.id === arcId);
+      if (!arc) return;
+      const resetOrder = arc.order;
+
+      // Collect all mission IDs belonging to arcs with order >= resetOrder
+      const arcsToReset = ALL_ARCS.filter(a => a.order >= resetOrder);
+      const missionIdsToReset = new Set(
+        ALL_MISSIONS.filter(m => arcsToReset.some(a => a.id === m.arcId)).map(m => m.id)
+      );
+
       set(state => {
-        state.completedMissions = [];
-        state.earnedSkills = [];
-        state.missionStates = {};
-        state.activeMissionId = null;
-        state.lastMissionId = null;
-        state.hintsRevealed = 0;
-        state.attempts = 0;
-        state.lastValidation = null;
-        state.successDismissed = false;
+        state.completedMissions = state.completedMissions.filter(id => !missionIdsToReset.has(id));
+        const newMissionStates: typeof state.missionStates = {};
+        for (const [id, ms] of Object.entries(state.missionStates)) {
+          if (!missionIdsToReset.has(id)) newMissionStates[id] = ms;
+        }
+        state.missionStates = newMissionStates;
+
+        // Clear active task state if current mission belongs to a reset arc
+        if (state.activeMissionId && missionIdsToReset.has(state.activeMissionId)) {
+          state.activeMissionId = null;
+          state.hintsRevealed = 0;
+          state.attempts = 0;
+          state.lastValidation = null;
+          state.successDismissed = false;
+          state.activeObjectiveId = null;
+          state.clearedObjectiveIds = [];
+        }
+        if (state.lastMissionId && missionIdsToReset.has(state.lastMissionId)) {
+          state.lastMissionId = null;
+        }
+
         state.showArcComplete = null;
-        state.introSeen = false;
-        state.seenHardwareTierIds = [];
+
+        // Recompute seenHardwareTierIds — keep tiers whose unlockedBy is still completed or null
+        const survivingCompleted = state.completedMissions;
+        state.seenHardwareTierIds = HARDWARE_PROGRESSION
+          .filter(t => t.unlockedBy === null || survivingCompleted.includes(t.unlockedBy))
+          .map(t => t.id);
+
+        // Reset arc 1 clears everything including intro
+        if (resetOrder === 1) {
+          state.introSeen = false;
+        }
       });
       persistRPGState(get());
     },
@@ -507,14 +650,31 @@ useSimulationStore.subscribe((simState) => {
   const mission = getMissionById(rpg.activeMissionId);
   if (!mission) return;
 
-  const ctx = buildValidationContext(simState, mission.primaryMode);
-  const result = validateTask(ctx, mission.winningCriteria);
+  // Multi-objective: validate active objective's criteria
+  let criteria = mission.winningCriteria;
+  let expectedChanges = mission.expectedChanges;
+  let mode = mission.primaryMode;
+
+  if (mission.objectives && rpg.activeObjectiveId) {
+    const objective = mission.objectives.find(o => o.id === rpg.activeObjectiveId);
+    if (objective) {
+      criteria = objective.winningCriteria;
+      expectedChanges = objective.expectedChanges;
+      mode = objective.primaryMode;
+    }
+  }
+
+  // Multi-objective with no active objective selected → skip validation
+  if (mission.objectives && !rpg.activeObjectiveId) return;
+
+  const ctx = buildValidationContext(simState, mode);
+  const result = validateTask(ctx, criteria);
 
   // Validate expected changes (approach validation)
   let approachValid = true;
-  if (mission.expectedChanges && rpg.taskConfigSnapshot) {
+  if (expectedChanges && rpg.taskConfigSnapshot) {
     const currentConfig = captureTaskConfig();
-    const { valid } = validateExpectedChanges(rpg.taskConfigSnapshot, currentConfig, mission.expectedChanges);
+    const { valid } = validateExpectedChanges(rpg.taskConfigSnapshot, currentConfig, expectedChanges);
     approachValid = valid;
   }
 

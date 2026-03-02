@@ -44,6 +44,7 @@ import {
   STORED_LAYERS_CAPACITY_FRACTION,
 } from './base.ts';
 import { computeFSDPExposedComm, applyProtocolOverhead, PROTOCOL_OVERHEAD, PER_COLLECTIVE_OVERHEAD_MS } from './overlap.ts';
+import { getCollectiveBandwidth } from '../hardware/interconnect.ts';
 import {
   computeLoraTrainableParams,
   getQloraDequantTimeMs,
@@ -312,18 +313,18 @@ export class FSDPStrategy extends ParallelismStrategy {
     let bandwidth: number;
 
     if (cluster.numNodes === 1) {
-      bandwidth = cluster.node.intraNodeInterconnect.bandwidthGBps;
+      bandwidth = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
     } else {
       // FSDP within nodes uses NVLink, across nodes uses IB
       // Weighted average based on sharding topology
       const gpusPerNode = cluster.gpusPerNode;
 
       if (shardingDegree <= gpusPerNode) {
-        bandwidth = cluster.node.intraNodeInterconnect.bandwidthGBps;
+        bandwidth = getCollectiveBandwidth(cluster.node.intraNodeInterconnect);
       } else {
         // Cross-node communication
         bandwidth = Math.min(
-          cluster.node.intraNodeInterconnect.bandwidthGBps,
+          getCollectiveBandwidth(cluster.node.intraNodeInterconnect),
           cluster.interNodeBandwidthGBps
         );
       }
