@@ -5,12 +5,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ChevronsUp, ChevronsDown, Lightbulb, X, Check } from 'lucide-react';
+import { ChevronsUp, ChevronsDown, X, Check } from 'lucide-react';
 import { useRPGStore } from '../../stores/rpg.ts';
 import { getMissionById } from '../../rpg/missions/index.ts';
 import { ALL_ARCS } from '../../rpg/missions/index.ts';
 import { CriteriaChecklist } from '../game/CriteriaChecklist.tsx';
-import { GlossaryText } from '../game/GlossaryText.tsx';
+import { NarrativeBlocks } from '../game/NarrativeBlocks.tsx';
+import { HintCarousel } from '../game/HintCarousel.tsx';
 import { Tooltip } from '../ui/Tooltip.tsx';
 import { ConfirmResetButton } from '../ui/ConfirmResetButton.tsx';
 import { useTheme } from '../../hooks/useTheme.ts';
@@ -42,8 +43,10 @@ export function MissionHUD() {
 
   // Auto-advance to newest hint when revealed
   useEffect(() => {
-    if (hintsRevealed > 0) setActiveHintIndex(hintsRevealed - 1);
-  }, [hintsRevealed]);
+    const m = activeMissionId ? getMissionById(activeMissionId) : null;
+    const maxIndex = m ? m.hints.length - 1 : 0;
+    if (hintsRevealed > 0) setActiveHintIndex(Math.min(hintsRevealed - 1, maxIndex));
+  }, [hintsRevealed, activeMissionId]);
 
   if (!activeMissionId) return null;
   const mission = getMissionById(activeMissionId);
@@ -112,9 +115,6 @@ export function MissionHUD() {
 
         <div className="flex-1" />
 
-        {/* Reset to mission defaults */}
-        <ConfirmResetButton onConfirm={resetMission} tooltip="Reset to mission defaults" />
-
         {/* Expand/collapse */}
         <Tooltip text={hudExpanded ? 'Collapse' : 'Expand'}>
           <button
@@ -125,8 +125,11 @@ export function MissionHUD() {
           </button>
         </Tooltip>
 
-        {/* Exit RPG mode */}
-        <Tooltip text="Exit RPG mode">
+        {/* Reset to mission defaults */}
+        <ConfirmResetButton onConfirm={resetMission} tooltip="Reset to mission defaults" />
+
+        {/* Exit game mode */}
+        <Tooltip text="Exit game mode">
           <button
             onClick={exit}
             className="text-gray-400 hover:text-gray-300 cursor-pointer p-1 flex-shrink-0"
@@ -156,26 +159,7 @@ export function MissionHUD() {
 
           {/* Briefing */}
           <div className="space-y-2 mb-3">
-            {mission.briefing.trim().split('\n\n').map((block, i) => {
-              const lines = block.trim().split('\n');
-              const isList = lines.every(l => l.trimStart().startsWith('- '));
-              if (isList) {
-                return (
-                  <ul key={i} className="space-y-1 ml-1 border-l-2 border-gray-700 pl-3">
-                    {lines.map((line, j) => (
-                      <li key={j} className="text-sm text-gray-300/80 leading-relaxed font-mono">
-                        <GlossaryText text={line.trimStart().slice(2)} />
-                      </li>
-                    ))}
-                  </ul>
-                );
-              }
-              return (
-                <p key={i} className="text-sm text-gray-300/80 leading-relaxed font-mono">
-                  <GlossaryText text={block.trim()} />
-                </p>
-              );
-            })}
+            <NarrativeBlocks text={mission.briefing} textClass="text-gray-300/80" mono />
           </div>
 
           <div className="border-t border-gray-800 mb-3" />
@@ -236,38 +220,16 @@ export function MissionHUD() {
 
             {/* Hints */}
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <span className="text-sm text-gray-400 font-mono">Hints</span>
-                {hintsRevealed > 1 && mission.hints.slice(0, hintsRevealed).map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setActiveHintIndex(i)}
-                    className={`w-5 h-5 rounded-full text-xs cursor-pointer transition-colors font-mono ${
-                      i === activeHintIndex
-                        ? 'bg-amber-400/30 text-amber-300'
-                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
-                {hasMoreHints && (
-                  <button
-                    onClick={revealNextHint}
-                    className="text-sm text-amber-400/70 hover:text-amber-300 cursor-pointer flex items-center gap-1 ml-auto font-mono"
-                  >
-                    <Lightbulb className="w-3.5 h-3.5" />
-                    Show hint
-                  </button>
-                )}
-              </div>
-
-              {hintsRevealed > 0 && (
-                <div className="text-sm text-amber-200/80 bg-amber-900/20 border border-amber-700/30 rounded px-2.5 py-1.5 font-mono break-words">
-                  <Lightbulb className="w-3.5 h-3.5 inline mr-1 text-amber-400" />
-                  <GlossaryText text={mission.hints[activeHintIndex].trim()} />
-                </div>
-              )}
+              <HintCarousel
+                hints={mission.hints}
+                hintsRevealed={hintsRevealed}
+                activeHintIndex={activeHintIndex}
+                onSelectHint={setActiveHintIndex}
+                onRevealNext={revealNextHint}
+                hasMore={hasMoreHints}
+                theme="amber"
+                mono
+              />
             </div>
           </div>
         </div>

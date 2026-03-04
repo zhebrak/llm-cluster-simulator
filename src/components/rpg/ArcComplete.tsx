@@ -5,6 +5,7 @@
 import { Orbit, ArrowLeft } from 'lucide-react';
 import { useRPGStore } from '../../stores/rpg.ts';
 import { ALL_ARCS } from '../../rpg/missions/index.ts';
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
 
 export function ArcComplete() {
   const showArcComplete = useRPGStore(s => s.showArcComplete);
@@ -16,7 +17,7 @@ export function ArcComplete() {
   if (!arc) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <ModalBackdrop>
       <div
         className="bg-gray-950 border border-amber-500/30 rounded-xl p-6 max-w-md w-full mx-4 text-center"
         onClick={e => e.stopPropagation()}
@@ -44,6 +45,6 @@ export function ArcComplete() {
           To Mission Log
         </button>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

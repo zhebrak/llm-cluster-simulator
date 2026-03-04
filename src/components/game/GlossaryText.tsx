@@ -1,22 +1,26 @@
 /**
- * GlossaryText — parses task strings for glossary tooltips, paper links, and code spans.
+ * GlossaryText — parses task strings for glossary tooltips, paper links, code spans, and emphasis.
  *
  * Syntax:
  *   {{termId}}              → glossary tooltip with default display
  *   {{termId|display text}} → glossary tooltip with custom display
  *   [link text](url)        → clickable external link (opens new tab)
  *   `code`                  → inline code span (monospace, styled)
+ *   **bold text**           → bold (strong) emphasis
+ *   *italic text*           → italic emphasis
  */
 
 import { GLOSSARY } from '../../game/glossary.ts';
 import { Tooltip } from '../ui/Tooltip.tsx';
 
-// Single-pass regex matching {{term}}, [text](url), and `code` tokens.
+// Single-pass regex matching {{term}}, [text](url), `code`, **bold**, and *italic* tokens.
 // Group 1: full glossary match  → groups 2=id, 3=custom display (optional)
 // Group 4: full link match      → groups 5=text, 6=url
 // Group 7: full backtick match  → group 8=inner content
+// Group 9: full bold match      → group 10=inner content
+// Group 11: full italic match   → group 12=inner content
 const TOKEN_RE =
-  /(\{\{([a-z0-9-]+)(?:\|([^}]*))?\}\})|(\[([^\]]+)\]\(([^)]+)\))|(`([^`]+)`)/g;
+  /(\{\{([a-z0-9-]+)(?:\|([^}]*))?\}\})|(\[([^\]]+)\]\(([^)]+)\))|(`([^`]+)`)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/g;
 
 interface GlossaryTextProps {
   text: string;
@@ -89,6 +93,20 @@ export function GlossaryText({ text }: GlossaryTextProps) {
         <code key={key++} className="px-1 py-0.5 bg-gray-800 rounded text-[0.85em] font-mono text-gray-200">
           {match[8]}
         </code>,
+      );
+    } else if (match[9]) {
+      // Bold: **text**
+      parts.push(
+        <strong key={key++} className="font-bold">
+          {match[10]}
+        </strong>,
+      );
+    } else if (match[11]) {
+      // Italic: *text*
+      parts.push(
+        <em key={key++} className="italic">
+          {match[12]}
+        </em>,
       );
     }
 

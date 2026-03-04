@@ -985,7 +985,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
                         const schedule = e.target.value as '1f1b' | 'interleaved-1f1b' | 'dualpipe-v';
                         config.setStrategyParams({
                           pipelineSchedule: schedule,
-                          ...(schedule === 'interleaved-1f1b' ? { interleavedStages: config.training.interleavedStages || 2 } : {}),
+                          ...(schedule === 'interleaved-1f1b' ? { interleavedStages: Math.max(2, config.training.interleavedStages) } : {}),
                         });
                       }}
                     >
@@ -1446,7 +1446,7 @@ export function Sidebar({ onCollapse }: { onCollapse?: () => void }) {
             <span className="relative z-10">Run {config.mode === 'training' ? 'Training' : 'Inference'}</span>
             <span className="relative z-10 text-[10px] text-white/40 ml-1 translate-y-[2px]">Ctrl+Enter</span>
           </button>
-          {config.mode === 'training' && !gameActive && (
+          {config.mode === 'training' && !gameActive && !rpgActive && (
             <Tooltip text="Auto-Optimize  Ctrl+Shift+Enter">
               <button
                 onClick={() => simulation.autoOptimizeTraining()}

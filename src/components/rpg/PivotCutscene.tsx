@@ -7,12 +7,13 @@ import { Sparkles, ArrowRight } from 'lucide-react';
 import { useRPGStore } from '../../stores/rpg.ts';
 import { useTheme } from '../../hooks/useTheme.ts';
 import { getMissionById, ALL_ARCS } from '../../rpg/missions/index.ts';
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
 
 /** Map of mission IDs to hero image paths (dark/light variants). */
 const PIVOT_IMAGES: Record<string, { dark: string; light: string }> = {
   'mission-1-8': { dark: '/signal_dark.png', light: '/signal_light.png' },
   'mission-2-11': { dark: '/life_dark.png', light: '/life_light.png' },
-  'mission-3-7': { dark: '/ship_dark.png', light: '/ship_light.png' },
+  'mission-3-7': { dark: '/contact_dark.png', light: '/contact_light.png' },
 };
 
 export function PivotCutscene() {
@@ -30,7 +31,7 @@ export function PivotCutscene() {
   const isDark = theme === 'dark';
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+    <ModalBackdrop backdropClass="bg-black/80">
       <div
         className="bg-gray-950 border border-amber-500/30 rounded-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
@@ -132,6 +133,6 @@ export function PivotCutscene() {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

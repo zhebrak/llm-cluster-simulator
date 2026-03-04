@@ -9,165 +9,11 @@
 import { describe, it, expect } from 'vitest';
 import { getMissionById, getMissionsForArc, isMissionUnlocked } from '../../src/rpg/missions/index.ts';
 import {
-  SimulationEngine,
-  type SimulationConfig,
-} from '../../src/core/simulation/engine.ts';
-import {
-  runInferenceSimulation,
-} from '../../src/core/inference/simulation.ts';
-import {
-  createMultiNodeCluster,
-  createSingleNodeCluster,
-} from '../../src/core/hardware/index.ts';
-import { evaluateCriterion } from '../../src/game/validation.ts';
-import { getGPUHourlyRate, calculateCostPerMillionTokens } from '../../src/core/cost/cloud.ts';
-import { TRAINING_DEFAULTS, INFERENCE_DEFAULTS } from '../../src/game/defaults.ts';
-import type { TaskSetup, WinningCriterion } from '../../src/game/types.ts';
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function makeCluster(gpuId: string, numGPUs: number, gpusPerNode: number) {
-  const numNodes = Math.ceil(numGPUs / gpusPerNode);
-  if (numNodes === 1) return createSingleNodeCluster(gpuId, numGPUs);
-  return createMultiNodeCluster(gpuId, gpusPerNode, numNodes);
-}
-
-function buildEffectiveTrainingConfig(setup: TaskSetup) {
-  return {
-    modelId: setup.modelId,
-    gpuId: setup.gpuId,
-    numGPUs: setup.numGPUs ?? 1,
-    gpusPerNode: setup.gpusPerNode ?? Math.min(setup.numGPUs ?? 1, 8),
-    strategyType: setup.strategyType ?? 'ddp',
-    mixedPrecision: setup.mixedPrecision ?? TRAINING_DEFAULTS.mixedPrecision,
-    sequenceLength: setup.sequenceLength ?? TRAINING_DEFAULTS.sequenceLength,
-    activationCheckpointing: setup.activationCheckpointing ?? TRAINING_DEFAULTS.activationCheckpointing,
-    checkpointingGranularity: setup.checkpointingGranularity ?? TRAINING_DEFAULTS.checkpointingGranularity,
-    flashAttention: setup.flashAttention ?? TRAINING_DEFAULTS.flashAttention,
-    globalBatchSize: setup.globalBatchSize ?? TRAINING_DEFAULTS.globalBatchSize,
-    microBatchSize: setup.microBatchSize ?? TRAINING_DEFAULTS.microBatchSize,
-    sequenceParallel: setup.sequenceParallel ?? TRAINING_DEFAULTS.sequenceParallel,
-    finetuningMethod: setup.finetuningMethod ?? TRAINING_DEFAULTS.finetuningMethod,
-    loraRank: setup.loraRank ?? TRAINING_DEFAULTS.loraRank,
-    loraTargetModules: setup.loraTargetModules ?? TRAINING_DEFAULTS.loraTargetModules,
-    tpDegree: setup.tpDegree ?? TRAINING_DEFAULTS.tpDegree,
-    ppDegree: setup.ppDegree ?? TRAINING_DEFAULTS.ppDegree,
-    epDegree: setup.epDegree ?? TRAINING_DEFAULTS.epDegree,
-    cpDegree: setup.cpDegree ?? TRAINING_DEFAULTS.cpDegree,
-    pipelineSchedule: setup.pipelineSchedule ?? TRAINING_DEFAULTS.pipelineSchedule,
-    interleavedStages: setup.interleavedStages ?? TRAINING_DEFAULTS.interleavedStages,
-  };
-}
-
-function buildEffectiveInferenceConfig(setup: TaskSetup) {
-  return {
-    modelId: setup.modelId,
-    gpuId: setup.gpuId,
-    numGPUs: setup.numGPUs ?? 1,
-    weightPrecision: setup.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: setup.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: setup.batchSize ?? INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: setup.inputSeqLen ?? INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: setup.outputSeqLen ?? INFERENCE_DEFAULTS.outputSeqLen,
-    flashAttention: setup.flashAttention ?? INFERENCE_DEFAULTS.flashAttention,
-    pagedAttention: setup.pagedAttention ?? INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: setup.continuousBatching ?? INFERENCE_DEFAULTS.continuousBatching,
-    tensorParallel: setup.tensorParallel ?? INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: setup.expertParallel ?? INFERENCE_DEFAULTS.expertParallel,
-    speculativeDecoding: setup.speculativeDecoding ?? INFERENCE_DEFAULTS.speculativeDecoding,
-    draftModelId: setup.draftModelId ?? INFERENCE_DEFAULTS.draftModelId,
-    numSpeculativeTokens: setup.numSpeculativeTokens ?? INFERENCE_DEFAULTS.numSpeculativeTokens,
-    acceptanceRate: setup.acceptanceRate ?? INFERENCE_DEFAULTS.acceptanceRate,
-  };
-}
-
-function runTraining(cfg: ReturnType<typeof buildEffectiveTrainingConfig>) {
-  const cluster = makeCluster(cfg.gpuId, cfg.numGPUs, cfg.gpusPerNode);
-  const engine = new SimulationEngine();
-
-  const strategyConfig: Record<string, unknown> = {};
-  strategyConfig.tp = cfg.tpDegree;
-  strategyConfig.pp = cfg.ppDegree;
-  strategyConfig.ep = cfg.epDegree;
-  strategyConfig.cp = cfg.cpDegree;
-  strategyConfig.sequenceParallel = cfg.sequenceParallel;
-  if (cfg.pipelineSchedule !== '1f1b') strategyConfig.pipelineSchedule = cfg.pipelineSchedule;
-  if (cfg.interleavedStages !== 2) strategyConfig.interleavedStages = cfg.interleavedStages;
-
-  const config: SimulationConfig = {
-    modelId: cfg.modelId,
-    clusterConfig: cluster,
-    sequenceLength: cfg.sequenceLength,
-    globalBatchSize: cfg.globalBatchSize,
-    microBatchSize: cfg.microBatchSize,
-    strategyType: cfg.strategyType as SimulationConfig['strategyType'],
-    strategyConfig: Object.keys(strategyConfig).length > 0 ? strategyConfig : undefined,
-    activationCheckpointing: cfg.activationCheckpointing,
-    checkpointingGranularity: cfg.checkpointingGranularity,
-    flashAttention: cfg.flashAttention,
-    mixedPrecision: cfg.mixedPrecision as SimulationConfig['mixedPrecision'],
-    finetuningMethod: cfg.finetuningMethod as SimulationConfig['finetuningMethod'],
-    loraRank: cfg.loraRank,
-    loraTargetModules: cfg.loraTargetModules as SimulationConfig['loraTargetModules'],
-  };
-  engine.configure(config);
-  return engine.simulate();
-}
-
-function runInference(cfg: ReturnType<typeof buildEffectiveInferenceConfig>) {
-  return runInferenceSimulation({
-    modelId: cfg.modelId,
-    gpuId: cfg.gpuId,
-    numGPUs: cfg.numGPUs,
-    batchSize: cfg.batchSize,
-    inputSeqLen: cfg.inputSeqLen,
-    outputSeqLen: cfg.outputSeqLen,
-    weightPrecision: cfg.weightPrecision,
-    kvCachePrecision: cfg.kvCachePrecision,
-    flashAttention: cfg.flashAttention,
-    pagedAttention: cfg.pagedAttention,
-    continuousBatching: cfg.continuousBatching,
-    tensorParallel: cfg.tensorParallel,
-    expertParallel: cfg.expertParallel,
-    speculativeEnabled: cfg.speculativeDecoding,
-    draftModelId: cfg.draftModelId ?? undefined,
-    numSpeculativeTokens: cfg.numSpeculativeTokens,
-    acceptanceRate: cfg.acceptanceRate,
-  });
-}
-
-function buildTrainingContext(setup: TaskSetup) {
-  const cfg = buildEffectiveTrainingConfig(setup);
-  const metrics = runTraining(cfg);
-  return { success: metrics.memoryUtilization <= 1.0, ...metrics };
-}
-
-function buildInferenceContext(setup: TaskSetup) {
-  const cfg = buildEffectiveInferenceConfig(setup);
-  const result = runInference(cfg);
-  if (!result) return null;
-  const rate = getGPUHourlyRate(cfg.gpuId).rate;
-  const memUtil = result.utilization?.memoryCapacityUtilization ?? 0;
-  return {
-    success: memUtil <= 1.0,
-    ...result,
-    numGPUs: cfg.numGPUs,
-    memoryUtilization: memUtil,
-    costPerMillionTokens: calculateCostPerMillionTokens(
-      rate, cfg.numGPUs, result.throughput?.tokensPerSecond ?? 0,
-    ),
-  };
-}
-
-function checkAllCriteria(ctx: object | null, criteria: WinningCriterion[]): boolean {
-  if (!ctx) return false;
-  return criteria.every(c => evaluateCriterion(ctx, c));
-}
-
-function checkAnyCriterionFails(ctx: object | null, criteria: WinningCriterion[]): boolean {
-  if (!ctx) return true;
-  return criteria.some(c => !evaluateCriterion(ctx, c));
-}
+  buildTrainingContext,
+  buildInferenceContext,
+  checkAllCriteria,
+  checkAnyCriterionFails,
+} from '../helpers/simulation.ts';
 
 // ── DAG tests ────────────────────────────────────────────────────────
 
@@ -186,8 +32,8 @@ describe('Arc 3 DAG Structure', () => {
 
   it('3-1 requires 2-11 (Life pivot)', () => {
     const m = getMissionById('mission-3-1')!;
-    expect(m.prerequisites).toEqual(['mission-2-11']);
-    expect(isMissionUnlocked(m, ['mission-2-11'])).toBe(true);
+    expect(m.prerequisites).toEqual(['mission-2-11', 'mission-1-4']);
+    expect(isMissionUnlocked(m, ['mission-2-11', 'mission-1-4'])).toBe(true);
     expect(isMissionUnlocked(m, [])).toBe(false);
   });
 
@@ -203,11 +49,11 @@ describe('Arc 3 DAG Structure', () => {
     expect(m.prerequisites).toEqual(['mission-3-1', 'mission-2-9']);
   });
 
-  it('3-5 requires 3-2 + 3-3 + 3-4', () => {
+  it('3-5 requires 2-6 + 3-2 + 3-3 + 3-4', () => {
     const m = getMissionById('mission-3-5')!;
-    expect(m.prerequisites).toEqual(['mission-3-2', 'mission-3-3', 'mission-3-4']);
-    expect(isMissionUnlocked(m, ['mission-3-2', 'mission-3-3', 'mission-3-4'])).toBe(true);
-    expect(isMissionUnlocked(m, ['mission-3-2', 'mission-3-3'])).toBe(false);
+    expect(m.prerequisites).toEqual(['mission-2-6', 'mission-3-2', 'mission-3-3', 'mission-3-4']);
+    expect(isMissionUnlocked(m, ['mission-2-6', 'mission-3-2', 'mission-3-3', 'mission-3-4'])).toBe(true);
+    expect(isMissionUnlocked(m, ['mission-3-2', 'mission-3-3', 'mission-3-4'])).toBe(false);
   });
 
   it('3-6 requires 3-5', () => {
@@ -227,7 +73,6 @@ describe('Arc 3 DAG Structure', () => {
     expect(m.objectives![0].id).toBe('obj-biosig-train');
     expect(m.objectives![1].id).toBe('obj-finetune');
     expect(m.objectives![2].id).toBe('obj-probe-infer');
-    expect(m.winningCriteria).toEqual([]);
   });
 
   it('3-6 is a multi-objective mission with 4 objectives', () => {
@@ -238,7 +83,6 @@ describe('Arc 3 DAG Structure', () => {
     expect(m.objectives![1].id).toBe('obj-moe-train');
     expect(m.objectives![2].id).toBe('obj-feed-infer');
     expect(m.objectives![3].id).toBe('obj-latency-infer');
-    expect(m.winningCriteria).toEqual([]);
   });
 });
 
@@ -248,20 +92,32 @@ describe('Arc 3 Mission Calibration', () => {
   describe('Mission 3-1: Landfall (continuous batching)', () => {
     const mission = getMissionById('mission-3-1')!;
 
-    it('default setup (CB=off) → throughput < 1700 tok/s', () => {
+    it('default setup (CB=off) → throughput < 12500 tok/s', () => {
       const ctx = buildInferenceContext(mission.setup);
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
-      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(1700);
+      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(12500);
       expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('CB=on → throughput > 1700 tok/s, all criteria pass', () => {
+    it('CB=on → throughput > 12500 tok/s, all criteria pass', () => {
       const ctx = buildInferenceContext({ ...mission.setup, continuousBatching: true });
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
-      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(1700);
+      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(12500);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('regression: fp4 b=512 static (tightest non-CB) still below 12500', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup,
+        weightPrecision: 'fp4',
+        batchSize: 512,
+        continuousBatching: false,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(12500);
     });
   });
 
@@ -280,19 +136,63 @@ describe('Arc 3 Mission Calibration', () => {
       expect(ctx.mfu).toBeGreaterThan(0.20);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
+
+    // Physics-guard tests: document whether alternative approaches solve the OOM
+    // These are blocked by expectedChanges regardless, but physics may provide a secondary barrier.
+
+    it('physics guard: full AC at CP=1 → still OOM (physics blocks)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        checkpointingGranularity: 'full',
+        cpDegree: 1,
+      });
+      // Full AC reduces activation memory via sqrt(N) checkpointing, but at 131K
+      // the per-GPU activations are so large that even full AC can't save CP=1.
+      expect(ctx.success).toBe(false);
+      expect(ctx.memoryUtilization).toBeGreaterThan(1.0);
+    });
+
+    it('physics guard: LoRA at CP=1 → still OOM (physics blocks)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        finetuningMethod: 'lora',
+        cpDegree: 1,
+      });
+      // LoRA reduces optimizer memory but activations still overflow at 131K.
+      expect(ctx.success).toBe(false);
+      expect(ctx.memoryUtilization).toBeGreaterThan(1.0);
+    });
+
+    it('physics guard: TP=16 at CP=1 → fits (NOT physics-blocked, needs expectedChanges lock)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        tpDegree: 16,
+        cpDegree: 1,
+      });
+      // Cross-node TP=16 halves per-GPU activations via SP, which is enough at 131K.
+      // This bypass is blocked by tpDegree: unchanged in expectedChanges, not physics.
+      expect(ctx.success).toBe(true);
+    });
   });
 
   describe('Mission 3-3: Alien Model (expert parallelism)', () => {
     const mission = getMissionById('mission-3-3')!;
 
-    it('default setup (EP=1) → MFU < 30%', () => {
+    it('default setup (EP=1) → MFU < 55%', () => {
       const ctx = buildTrainingContext(mission.setup);
       expect(ctx.success).toBe(true);
-      expect(ctx.mfu).toBeLessThan(0.30);
+      expect(ctx.mfu).toBeLessThan(0.55);
       expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('EP=1 bypass: TP/PP/GBS combos stay below 30% MFU (physics guard)', () => {
+    it('EP=2 → MFU < 55% (insufficient EP)', () => {
+      const ctx = buildTrainingContext({ ...mission.setup, epDegree: 2 });
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeLessThan(0.55);
+      expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('EP=1 bypass: TP/PP/GBS combos stay below 55% MFU (physics guard)', () => {
       // Without EP, all expert weights participate in FSDP AllGather even though
       // only ~17B of ~400B activate per token. This caps MFU around 22-23%.
       const bypassConfigs = [
@@ -307,25 +207,29 @@ describe('Arc 3 Mission Calibration', () => {
       for (const overrides of bypassConfigs) {
         const ctx = buildTrainingContext({ ...mission.setup, ...overrides });
         if (ctx.success) {
-          expect(ctx.mfu).toBeLessThan(0.30);
+          expect(ctx.mfu).toBeLessThan(0.55);
         }
       }
     });
 
-    it('EP=1 bypass: MBS=4 reaches >30% MFU (guarded by expectedChanges)', () => {
-      // Increasing MBS from 2 to 4 at EP=1 pushes MFU above 30% — confirmed bypass.
-      // This is blocked by the microBatchSize=unchanged guard in expectedChanges.
-      const ctx = buildTrainingContext({
-        ...mission.setup, tpDegree: 8, ppDegree: 1, epDegree: 1, microBatchSize: 4,
-      });
+    it('EP=4 → MFU > 55%, all criteria pass', () => {
+      const ctx = buildTrainingContext({ ...mission.setup, epDegree: 4 });
       expect(ctx.success).toBe(true);
-      expect(ctx.mfu).toBeGreaterThan(0.30);
+      expect(ctx.mfu).toBeGreaterThan(0.55);
+      expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('EP=8 → MFU > 30%, all criteria pass', () => {
+    it('EP=8 → MFU > 55%, all criteria pass', () => {
       const ctx = buildTrainingContext({ ...mission.setup, epDegree: 8 });
       expect(ctx.success).toBe(true);
-      expect(ctx.mfu).toBeGreaterThan(0.30);
+      expect(ctx.mfu).toBeGreaterThan(0.55);
+      expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('EP=16 → MFU > 55%, all criteria pass', () => {
+      const ctx = buildTrainingContext({ ...mission.setup, epDegree: 16 });
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeGreaterThan(0.55);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
   });
@@ -333,21 +237,61 @@ describe('Arc 3 Mission Calibration', () => {
   describe('Mission 3-4: Big Train (pipeline schedule)', () => {
     const mission = getMissionById('mission-3-4')!;
 
-    it('default setup (1F1B v=1) → MFU < 37%', () => {
+    it('default setup (1F1B v=1) → MFU < 39%', () => {
       const ctx = buildTrainingContext(mission.setup);
       expect(ctx.success).toBe(true);
-      expect(ctx.mfu).toBeLessThan(0.37);
+      expect(ctx.mfu).toBeLessThan(0.39);
       expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('interleaved-1f1b v=4 → MFU > 37%, all criteria pass', () => {
+    it('interleaved-1f1b v=2 → MFU < 39%, fails threshold', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        pipelineSchedule: 'interleaved-1f1b',
+        interleavedStages: 2,
+      });
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeLessThan(0.39);
+      expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('interleaved-1f1b v=2 → bubble > 10% (fails bubble criterion)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        pipelineSchedule: 'interleaved-1f1b',
+        interleavedStages: 2,
+      });
+      expect(ctx.pipelineBubble).toBeGreaterThan(0.10);
+    });
+
+    it('interleaved-1f1b v=4 → bubble < 10% (passes bubble criterion)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        pipelineSchedule: 'interleaved-1f1b',
+        interleavedStages: 4,
+      });
+      expect(ctx.pipelineBubble).toBeLessThan(0.10);
+    });
+
+    it('interleaved-1f1b v=2 + FP8 → bubble > 10% (FP8 does not reduce bubble)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        pipelineSchedule: 'interleaved-1f1b',
+        interleavedStages: 2,
+        mixedPrecision: 'fp8',
+      });
+      expect(ctx.pipelineBubble).toBeGreaterThan(0.10);
+    });
+
+    it('interleaved-1f1b v=4 → MFU > 39%, all criteria pass', () => {
       const ctx = buildTrainingContext({
         ...mission.setup,
         pipelineSchedule: 'interleaved-1f1b',
         interleavedStages: 4,
       });
       expect(ctx.success).toBe(true);
-      expect(ctx.mfu).toBeGreaterThan(0.37);
+      expect(ctx.mfu).toBeGreaterThan(0.39);
+      expect(ctx.pipelineBubble).toBeLessThan(0.10);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
   });
@@ -366,11 +310,24 @@ describe('Arc 3 Mission Calibration', () => {
         expect(checkAnyCriterionFails(ctx, objBiosig.winningCriteria)).toBe(true);
       });
 
-      it('FP8 + AC → fits + MFU > 50%', () => {
+      it('FP8 + AC → fits + MFU > 50% (AC path)', () => {
         const ctx = buildTrainingContext({
           ...objBiosig.setup,
           mixedPrecision: 'fp8',
           activationCheckpointing: true,
+        });
+        expect(ctx.success).toBe(true);
+        expect(ctx.mfu).toBeGreaterThan(0.50);
+        expect(checkAllCriteria(ctx, objBiosig.winningCriteria)).toBe(true);
+      });
+
+      it('FSDP-TP FP8 no AC → fits + MFU > 50% (TP path)', () => {
+        const ctx = buildTrainingContext({
+          ...objBiosig.setup,
+          strategyType: 'fsdp-tp',
+          mixedPrecision: 'fp8',
+          activationCheckpointing: false,
+          tpDegree: 2,
         });
         expect(ctx.success).toBe(true);
         expect(ctx.mfu).toBeGreaterThan(0.50);
@@ -448,27 +405,47 @@ describe('Arc 3 Mission Calibration', () => {
     });
 
     describe('Objective 2 — Training: MoE expert translation engine', () => {
-      it('default setup (BF16 EP=1) → MFU < 40%', () => {
+      it('default setup (BF16 EP=1) → MFU < 55%', () => {
         const ctx = buildTrainingContext(objMoe.setup);
         expect(ctx.success).toBe(true);
-        expect(ctx.mfu).toBeLessThan(0.40);
+        expect(ctx.mfu).toBeLessThan(0.55);
         expect(checkAnyCriterionFails(ctx, objMoe.winningCriteria)).toBe(true);
       });
 
-      it('FP8 + EP=8 → MFU > 40%', () => {
+      it('physics guard: EP=8 + BF16 → MFU < 55% (FP8 required)', () => {
+        const ctx = buildTrainingContext({
+          ...objMoe.setup,
+          epDegree: 8,
+        });
+        expect(ctx.success).toBe(true);
+        expect(ctx.mfu).toBeLessThan(0.55);
+      });
+
+      it('FP8 + EP=4 → MFU > 55%', () => {
+        const ctx = buildTrainingContext({
+          ...objMoe.setup,
+          mixedPrecision: 'fp8',
+          epDegree: 4,
+        });
+        expect(ctx.success).toBe(true);
+        expect(ctx.mfu).toBeGreaterThan(0.55);
+        expect(checkAllCriteria(ctx, objMoe.winningCriteria)).toBe(true);
+      });
+
+      it('FP8 + EP=8 → MFU > 55%', () => {
         const ctx = buildTrainingContext({
           ...objMoe.setup,
           mixedPrecision: 'fp8',
           epDegree: 8,
         });
         expect(ctx.success).toBe(true);
-        expect(ctx.mfu).toBeGreaterThan(0.40);
+        expect(ctx.mfu).toBeGreaterThan(0.55);
         expect(checkAllCriteria(ctx, objMoe.winningCriteria)).toBe(true);
       });
     });
 
     describe('Objective 3 — Inference: High-throughput probe feed', () => {
-      it('default setup (BF16 CB=off) → throughput < 4000 tok/s', () => {
+      it('default setup (FP8 batch=1 CB=off) → throughput < 4000 tok/s', () => {
         const ctx = buildInferenceContext(objFeed.setup);
         expect(ctx).not.toBeNull();
         expect(ctx!.success).toBe(true);
@@ -476,30 +453,66 @@ describe('Arc 3 Mission Calibration', () => {
         expect(checkAnyCriterionFails(ctx, objFeed.winningCriteria)).toBe(true);
       });
 
-      it('FP8 + CB=on → throughput > 4000 tok/s', () => {
+      it('physics guard: batch=64 + CB=off → TTFT > 500ms (TTFT blocks non-CB bypass)', () => {
         const ctx = buildInferenceContext({
           ...objFeed.setup,
-          weightPrecision: 'fp8',
+          batchSize: 64,
+          continuousBatching: false,
+        });
+        expect(ctx).not.toBeNull();
+        expect(ctx!.success).toBe(true);
+        // Throughput exceeds 4000 tok/s without CB, but TTFT blocks it
+        expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(4000);
+        expect(ctx!.latency?.ttft).toBeGreaterThan(500);
+        expect(checkAnyCriterionFails(ctx, objFeed.winningCriteria)).toBe(true);
+      });
+
+      it('batch=32 + CB=on → throughput > 4000 tok/s + TTFT < 500ms', () => {
+        const ctx = buildInferenceContext({
+          ...objFeed.setup,
+          batchSize: 32,
           continuousBatching: true,
         });
         expect(ctx).not.toBeNull();
         expect(ctx!.success).toBe(true);
         expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(4000);
+        expect(ctx!.latency?.ttft).toBeLessThan(500);
         expect(checkAllCriteria(ctx, objFeed.winningCriteria)).toBe(true);
       });
     });
 
     describe('Objective 4 — Inference: Low-latency translation', () => {
-      // Note: TP=16 default already meets TPOT < 23ms (cross-node TP is fast enough
-      // for small batch decode). The expectedChanges guard is what enforces the lesson —
-      // the player must decrease TP to demonstrate understanding of intra-node topology.
-      it('default setup (TP=16) → model loads successfully', () => {
+      it('default setup (TP=16) → throughput < 89 tok/s (fails throughput criterion)', () => {
         const ctx = buildInferenceContext(objLatency.setup);
         expect(ctx).not.toBeNull();
         expect(ctx!.success).toBe(true);
+        expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(89);
+        expect(checkAnyCriterionFails(ctx, objLatency.winningCriteria)).toBe(true);
       });
 
-      it('TP=8 → TPOT < 23ms, all criteria pass', () => {
+      it('TP=12 → still cross-node, throughput < 89 tok/s (blocked)', () => {
+        const ctx = buildInferenceContext({
+          ...objLatency.setup,
+          tensorParallel: 12,
+        });
+        expect(ctx).not.toBeNull();
+        expect(ctx!.success).toBe(true);
+        expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(89);
+        expect(checkAnyCriterionFails(ctx, objLatency.winningCriteria)).toBe(true);
+      });
+
+      it('TP=9 → still cross-node, throughput < 89 tok/s (blocked)', () => {
+        const ctx = buildInferenceContext({
+          ...objLatency.setup,
+          tensorParallel: 9,
+        });
+        expect(ctx).not.toBeNull();
+        expect(ctx!.success).toBe(true);
+        expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(89);
+        expect(checkAnyCriterionFails(ctx, objLatency.winningCriteria)).toBe(true);
+      });
+
+      it('TP=8 → 2 replicas, throughput > 89 tok/s, all criteria pass', () => {
         const ctx = buildInferenceContext({
           ...objLatency.setup,
           tensorParallel: 8,
@@ -507,6 +520,7 @@ describe('Arc 3 Mission Calibration', () => {
         expect(ctx).not.toBeNull();
         expect(ctx!.success).toBe(true);
         expect(ctx!.latency?.tpot).toBeLessThan(23);
+        expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(89);
         expect(checkAllCriteria(ctx, objLatency.winningCriteria)).toBe(true);
       });
     });

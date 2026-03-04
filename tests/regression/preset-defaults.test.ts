@@ -322,7 +322,7 @@ const INFERENCE_PRESETS: InferencePresetCase[] = [
     batchSize: 4, inputSeqLen: 1024, outputSeqLen: 256,
     weightPrecision: 'int8', kvCachePrecision: 'int8',
     flashAttention: true, tensorParallel: 1,
-    pinned: { ttft: 1068.13, tpot: 23.211, throughputTps: 143.9 },
+    pinned: { ttft: 2136.26, tpot: 23.211, throughputTps: 125.5 },
   },
 ];
 

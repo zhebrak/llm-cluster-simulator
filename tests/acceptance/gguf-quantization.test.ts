@@ -109,8 +109,8 @@ describe('Test 3: TFLOPS mapping', () => {
     expect(getGPUTFLOPS(H100_SXM, 'int4')).not.toBe(H100_SXM.int4TOPS); // NOT 3958
   });
 
-  test('INT8 stays correct — W8A8 uses native INT8 tensor cores', () => {
-    expect(getGPUTFLOPS(H100_SXM, 'int8')).toBe(H100_SXM.int8TOPS); // 1979
+  test('INT8 uses BF16 compute — W8A16 dequants to BF16 (same as INT4)', () => {
+    expect(getGPUTFLOPS(H100_SXM, 'int8')).toBe(H100_SXM.bf16TFLOPS); // 989
   });
 
   test('GGUF types — all dequant to FP16, use bf16TFLOPS', () => {

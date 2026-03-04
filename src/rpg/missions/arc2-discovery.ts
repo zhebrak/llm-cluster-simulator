@@ -3,37 +3,37 @@
  * Missions teach: TP for latency, replica scaling, speculative decoding,
  * mixed precision, FSDP, activation checkpointing, LoRA, FP8, network
  * topology, pipeline parallelism, and multi-objective optimization.
+ * See RPG Text Style Guide in ../types.ts for briefing/hint/success narrative rules.
  *
  * DAG:
- *   INFERENCE BRANCH              TRAINING BRANCH
+ *   INFERENCE BRANCH              TRAINING BRANCH          HARDWARE (optional side chain)
  *
- *   1-8 (Signal pivot)            1-6 (Archive Vault)
- *    │                              │
- *    ▼                              ▼
- *   2-1 (TP latency)             2-4 (BF16 + FSDP)
- *    ├──────────┐                   │
- *    ▼          ▼                   ▼
- *   2-2 (Derelict)  2-3 (Spec)  2-5 (Activation ckpt)
- *    │                              │
- *    │                              ▼
- *    ├──────────────────────────► 2-6 (LoRA)
- *    │
- *    │   HARDWARE/ADVANCED
- *    │
- *    │   1-7 (Fuel Budget)
- *    │    │
- *    ▼    ▼       ▼
- *    2-7 (Shipment) ← 2-4
- *         │
- *         ▼
- *    2-8 (Bandwidth Wall)
- *         │
- *         ▼
- *    2-9 (Pipeline)        ← side mission
+ *   1-8 (Signal pivot)            1-6 (Archive Vault)      1-7 (Fuel Budget)
+ *    │                              │                        │
+ *    ▼                              ▼                        │
+ *   2-1 (TP latency)             2-4 (BF16 + FSDP)         │
+ *    ├──────────┐                   │                        │
+ *    ▼          ▼                   ▼                        │
+ *   2-2 (Derelict)  2-3 (Spec)  2-5 (Activation ckpt)      │
+ *    │                              │                        │
+ *    │                              ▼                        │
+ *    ├──────────────────────────► 2-6 (LoRA)                │
+ *    │                                                       │
+ *    ├──────┐                       │         ┌──── 2-2 ────┤
+ *    │      │                       │         │      2-4 ───┘
+ *    │      │                       │         ▼
+ *    │      │                     2-7 (Shipment) ← 1-7, 2-2, 2-4
+ *    │      │                       │
+ *    │      │                       ▼
+ *    │      │                     2-8 (Bandwidth Wall)
+ *    │      │                       │
+ *    │      │                       ▼
+ *    │      │                     2-9 (Pipeline) ──────────► (3-4)
+ *    │      │
+ *    ▼      ▼
+ *    2-10 (Protein/MFU) ← 2-2, 2-5, 2-7
  *
- *    2-10 (Protein/MFU) ← 2-5, 2-7
- *
- *    ⭐ 2-11 (Life) ← 2-7, 2-10
+ *    ⭐ 2-11 (Life) ← 2-10
  */
 
 import type { RPGArc, RPGMission } from '../types.ts';
@@ -41,14 +41,14 @@ import type { RPGArc, RPGMission } from '../types.ts';
 export const ARC2: RPGArc = {
   id: 'arc2-discovery',
   name: 'Discovery',
-  subtitle: 'A signal from Kepler-442b. Science doesn\'t wait',
+  subtitle: 'A signal from Ross 128b',
   description: 'Analyze the alien signal. Train new models. Push the ship\'s compute to its limits.',
   order: 2,
-  briefing: `The long-range scanner has detected a structured, repeating signal from Kepler-442b. Dr. Chen's team confirms it — encoded information, not cosmic noise. For the first time in 80 years, the ship has a reason to do more than survive.
+  briefing: `The long-range scanner has detected a structured, repeating signal from Ross 128b. Dr. Chen's team confirms it — encoded information, not cosmic noise. For the first time in 80 years, the ship has a reason to do more than survive.
 
 Science teams are coming out of cryo rotation. Chen needs real-time spectral analysis. Okafor wants to fine-tune navigation models on new sensor data. Every department is suddenly demanding GPU time — and the compute bay you nursed through survival is now the bottleneck for discovery.
 
-For the first time, the ship's models will need to train — not just on data from Earth, but on something no human has ever seen. The problems ahead are harder, the hardware demands are steeper, and there is no resupply coming. Somewhere ahead, something is broadcasting — and the Meridian needs to be ready.`,
+For the first time, the ship's models will need to train — not just on data from Earth, but on something no human has ever seen. The problems ahead are harder, the hardware demands are steeper, and every watt matters. Somewhere ahead, something is broadcasting — and the Meridian needs to be ready.`,
   heroImage: { dark: '/signal_dark.png', light: '/signal_light.png' },
 };
 
@@ -85,7 +85,7 @@ Tensor parallelism trades communication for speed. Each layer requires an AllRed
       outputSeqLen: 512,
     },
     winningCriteria: [
-      { field: 'latency.ttft', operator: '<', value: 200, label: 'TTFT < 200ms' },
+      { field: 'latency.ttft', operator: '<', value: 300, label: 'TTFT < 300ms' },
     ],
     expectedChanges: [
       { field: 'tensorParallel', check: 'increased', label: 'Increased tensor parallelism' },
@@ -117,11 +117,11 @@ Tensor parallelism trades communication for speed. Each layer requires an AllRed
       'Calculate replica count as floor(totalGPUs / GPUsPerReplica)',
       'Choose a TP degree that balances latency and concurrency for multi-stream workloads',
     ],
-    briefing: `An EVA team discovers a derelict relay station drifting near the ship. Inside: four more A100 GPUs, still functional after decades in vacuum. Chen needs three concurrent analysis streams — different spectral bands being decoded simultaneously.
+    briefing: `An EVA team discovers a derelict relay station drifting near the ship. Inside: four more A100 GPUs, still functional after decades in vacuum. Engineering hauls them back and wires them into the compute bay — eight A100s now online. Chen needs three concurrent analysis streams — different spectral bands being decoded simultaneously.
 
 Right now, all eight GPUs are yoked together serving a single stream. Fast — but only one at a time. When the second spectral band arrives, it queues. The third waits behind it. Chen is watching two-thirds of the incoming data queue up and go unanalyzed while the model processes one band at a time.
 
-Three spectral bands, three simultaneous requests. The hardware is there. Find a configuration that serves all three concurrently without unacceptable latency on any one of them.`,
+Three spectral bands, three simultaneous requests. Eight GPUs, more than enough silicon. Find a configuration that serves all three concurrently without unacceptable latency on any one of them.`,
     successNarrative: `Three spectral bands stream in parallel. Each analysis pipeline runs on its own replica, fast enough to keep up with the incoming data. Chen's team can finally cross-reference patterns across frequency ranges simultaneously.
 
 TP is a tradeoff between speed and concurrency. Higher TP means fewer, faster replicas. Lower TP means more replicas, each slightly slower. With 8 GPUs and TP=2, you get 4 replicas — more than enough for 3 concurrent streams, with latency still well within the window.
@@ -140,7 +140,7 @@ For throughput-sensitive multi-stream workloads, replicas beat raw single-stream
     },
     winningCriteria: [
       { field: 'numReplicas', operator: '>=', value: 3, label: 'At least 3 analysis streams' },
-      { field: 'latency.ttft', operator: '<', value: 300, label: 'TTFT < 300ms' },
+      { field: 'latency.ttft', operator: '<', value: 600, label: 'TTFT < 600ms' },
     ],
     expectedChanges: [
       { field: 'tensorParallel', check: 'decreased', label: 'Reduced tensor parallelism' },
@@ -156,7 +156,7 @@ For throughput-sensitive multi-stream workloads, replicas beat raw single-stream
       'If each replica needs fewer GPUs, you can fit more replicas. Consider what TP degree would give you at least 3 replicas while keeping latency acceptable.',
     ],
     prerequisites: ['mission-2-1'],
-    skillsAwarded: ['data-parallelism'],
+    skillsAwarded: ['model-parallelism'],
   },
 
   // ── Mission 2-3: Ghost Writer ───────────────────────────────────────
@@ -175,7 +175,7 @@ For throughput-sensitive multi-stream workloads, replicas beat raw single-stream
 
 Chen pulls up the GPU utilization monitor. The compute units are barely flickering during decode — the hardware is waiting, not working. "Single-digit utilization," she says flatly. "The hardware can do the math. It's spending all its time reading."
 
-There has to be a way to get more tokens per unit time out of this model without changing the model itself.`,
+The model stays. The throughput has to change.`,
     successNarrative: `The signal decoder accelerates dramatically. Draft tokens stream from the small model, and the 70B verifier accepts most of them in bulk — each verification pass producing multiple output tokens for the cost of one.
 
 Speculative decoding exploits the asymmetry between draft and verify. The small draft model proposes several candidate tokens cheaply. The large model verifies them all in parallel (a single forward pass, roughly the same cost as generating one token normally). Accepted tokens are free throughput. The speedup depends on the acceptance rate — similar model families tend to agree on most predictions.
@@ -202,8 +202,6 @@ For bandwidth-bound decode, speculative decoding is one of the few ways to break
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU' },
       { field: 'numGPUs', check: 'unchanged', label: 'Did not change GPU count' },
       { field: 'tensorParallel', check: 'unchanged', label: 'Did not change TP' },
-      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
-      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'Autoregressive decoding generates one token at a time — each requiring a full forward pass through all parameters. For large models, decode is memory-bandwidth-bound: the GPU spends most of its time reading weights from memory, not computing. The compute units are starving for work.',
@@ -222,20 +220,20 @@ For bandwidth-bound decode, speculative decoding is one of the few ways to break
     title: 'The Weight of Memory',
     subtitle: 'The ship has never trained before',
     learningObjectives: [
-      'Calculate per-parameter memory cost at FP32 (20 bytes) vs BF16 (18 bytes)',
+      'Calculate total per-parameter training memory: FP32 model state (16 bytes) vs BF16 mixed precision (18 bytes)',
       'Understand why DDP replicates full model state on every GPU',
       'Use FSDP to shard weights, gradients, and optimizer states across GPUs',
     ],
-    briefing: `Chief Engineer Okafor wants to fine-tune the navigation model on real debris field data — the pre-trained model keeps misclassifying asteroid fragments. "The manual says FP32 for numerical safety," Okafor says. "So we run FP32." She hits launch and watches the system crash instantly. Out of memory.
+    briefing: `Chief Engineer Okafor wants to fine-tune the navigation model on real debris field data — the pre-trained model keeps misclassifying asteroid fragments. "The manual says full 32-bit precision for numerical safety," Okafor says. "So we run full precision." She hits launch and watches the system crash instantly. Out of memory.
 
 Okafor adjusts the precision and tries again. Another crash — different stage, same result. The memory diagnostic shows each GPU independently holding far more data than it should need to. "Four GPUs," she mutters, "and each one's trying to carry everything alone."
 
 Make the 8B model train on four 80 GB GPUs.`,
     successNarrative: `The navigation model begins training on real debris field data. Within minutes, the loss curve drops — the model is learning to distinguish asteroid fragments from harmless dust clouds. Okafor watches the loss curve for a long moment. "So the manual was wrong about FP32. Good to know."
 
-Two bottlenecks had to fall. FP32 stores each parameter in 4 bytes, with 4-byte gradients and 12 bytes of optimizer state — 20 bytes per parameter, 160 GB for an 8B model. BF16 cuts parameter and gradient storage while keeping FP32 optimizer masters internally, dropping total to ~18 bytes per param. But even at BF16, DDP replicates everything on every GPU — 144 GB per device, still exceeding 80 GB.
+Precision was the first thing to fix. FP32 costs 16 bytes per parameter — 4 for the weight, 4 for the gradient, 8 for the optimizer. That's 128 GB for an 8B model, already beyond a single 80 GB GPU. Switching to BF16 seems obvious, but here's the twist: mixed precision actually makes model state *bigger*. The optimizer still needs FP32 master weights, so the total climbs to 18 bytes per parameter — 144 GB. BF16 earns its keep elsewhere: the hardware runs half-precision math faster, and activations — the real memory hog — shrink by half.
 
-FSDP (Fully Sharded Data Parallelism) shards the model state across all GPUs. Each GPU stores only 1/N of the weights, gradients, and optimizer states, gathering what it needs before each layer. Combined with BF16, the 8B model fits comfortably across four GPUs.`,
+Even so, 144 GB per GPU is still too much. That's because DDP copies everything onto every device — four GPUs, four identical copies, each one over capacity. FSDP breaks the deadlock by sharding weights, gradients, and optimizer states across all GPUs, each device holding only its 1/N slice. Combined with BF16, the 8B model fits comfortably across four.`,
     primaryMode: 'training',
     setup: {
       modelId: 'llama3.1-8b',
@@ -245,8 +243,8 @@ FSDP (Fully Sharded Data Parallelism) shards the model state across all GPUs. Ea
       mixedPrecision: 'fp32',
       globalBatchSize: 32,
       microBatchSize: 2,
-      sequenceLength: 4096,
-      activationCheckpointing: true,
+      sequenceLength: 2048,
+      activationCheckpointing: false,
       flashAttention: true,
     },
     winningCriteria: [
@@ -259,7 +257,6 @@ FSDP (Fully Sharded Data Parallelism) shards the model state across all GPUs. Ea
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU' },
       { field: 'numGPUs', check: 'unchanged', label: 'Did not change GPU count' },
-      { field: 'sequenceLength', check: 'unchanged', label: 'Did not change sequence length' },
     ],
     hints: [
       'Training stores far more than just the model weights. Look at the memory breakdown on the dashboard — gradients and optimizer states dwarf the weights themselves. What happens to total memory when you change precision?',
@@ -267,7 +264,7 @@ FSDP (Fully Sharded Data Parallelism) shards the model state across all GPUs. Ea
       'DDP replicates the full model state on every GPU — each device holds all weights, gradients, and optimizer states independently. Look for a distribution strategy that doesn\'t replicate the full state on every device — one that shards it across GPUs instead.',
     ],
     prerequisites: ['mission-1-6'],
-    skillsAwarded: ['precision', 'data-parallelism'],
+    skillsAwarded: ['precision', 'resource-efficiency'],
   },
 
   // ── Mission 2-5: Activation Avalanche ───────────────────────────────
@@ -282,12 +279,12 @@ FSDP (Fully Sharded Data Parallelism) shards the model state across all GPUs. Ea
       'Understand that activation memory scales with layers × micro-batch size × sequence length',
       'Enable activation checkpointing to trade compute for activation memory',
     ],
-    briefing: `Okafor's fine-tune launches successfully with FSDP — the weights and optimizer states fit. The forward pass completes. Then, midway through the backward pass, the system crashes. Out of memory again, but this time the memory diagnostic tells a different story: the model state is well within budget. Something else is filling the GPUs.
+    briefing: `The navigation fine-tune is running — FSDP sharding solved the memory problem. Now Chen's team needs longer context windows to capture the deeper patterns in the Ross 128b signal. Okafor scales up the sequence length and batch size, same distributed setup that worked before.
 
-The forward pass ran fine. The backward pass exploded. Whatever is accumulating between forward and backward is proportional to the model's depth and the amount of data in each micro-batch — and at these settings, it exceeds what the GPUs can hold.
+The weights and optimizer states fit. Midway through training — loss of signal. Out of memory, but the diagnostic says model state is well within budget. Something else is filling the GPUs.
 
-Make the backward pass complete without changing the batch size, sequence length, or strategy.`,
-    successNarrative: `The backward pass completes without interruption. Gradients flow through every layer, and the optimizer takes its first step. Okafor watches the loss begin to decrease. "So the forward pass was fine," she says slowly. "It's the backward pass that remembers everything. Noted."
+Make it fit without changing the batch size, sequence length, or strategy.`,
+    successNarrative: `The backward pass completes without interruption. Gradients flow through every layer, and the optimizer takes its first step. Okafor watches the loss begin to decrease. "So the forward pass was fine," she says slowly. "The backward pass remembers everything."
 
 Activation checkpointing breaks the memory-compute tradeoff in favor of memory. During forward, instead of storing every layer's intermediate tensors (attention outputs, MLP intermediates, normalization results), the system discards them. During backward, it recomputes each layer's activations on-the-fly just before they're needed for gradient computation.
 
@@ -318,8 +315,8 @@ The price is time — each layer's activations must be recomputed from scratch d
       { field: 'sequenceLength', check: 'unchanged', label: 'Did not change sequence length' },
     ],
     hints: [
-      'During the forward pass, each transformer layer produces intermediate tensors that the backward pass needs for gradient computation. These "activations" accumulate across all layers — the deeper the model and the larger the micro-batch, the more memory they consume. This is separate from weight and optimizer memory.',
-      'There is a classic compute-memory tradeoff: instead of storing all layer activations, discard them during forward and recompute them during backward. Full checkpointing reduces activation memory to O(1) per layer — only one layer\'s worth is held at a time — at the cost of extra compute.',
+      'During the forward pass, each transformer layer produces intermediate tensors that the backward pass needs for gradient computation. These "activations" accumulate across all layers — the deeper the model, the longer the sequence, and the larger the micro-batch, the more memory they consume. This is separate from weight and optimizer memory.',
+      'There is a classic compute-memory tradeoff: instead of storing all layer activations, discard them during forward and recompute them during backward. Full checkpointing means only one layer\'s activations are held at a time during backward, instead of all layers stacked simultaneously — at the cost of extra compute.',
       'Look for the Activation Checkpointing setting in the training configuration. "Full" checkpointing discards and recomputes all layer activations. "Selective" discards only the activations that are cheapest to recompute while keeping the more expensive ones.',
     ],
     prerequisites: ['mission-2-4'],
@@ -338,7 +335,7 @@ The price is time — each layer's activations must be recomputed from scratch d
       'Explain how LoRA freezes base weights and trains small adapter matrices',
       'Apply LoRA or QLoRA to fit a 70B fine-tune on limited hardware',
     ],
-    briefing: `The science team wants to fine-tune the 70B model for signal pattern recognition. Full fine-tuning at BF16 with FSDP across 8 A100s — surely that's enough hardware? Not even close. Okafor runs the numbers. "Optimizer state alone is over a terabyte," she reports. "We're not even close."
+    briefing: `The science team wants to fine-tune the 70B model for signal pattern recognition. Full fine-tuning distributed across all eight A100s — surely that's enough hardware? Not even close. Okafor runs the numbers. "Optimizer state alone is 840 gigabytes," she reports. "We're not even close."
 
 But do all 70 billion parameters really need to change? The model already understands language, reasoning, structure. The signal patterns are a narrow specialization layered on top of vast general knowledge. Updating every parameter to learn one new task is a poor trade.
 
@@ -370,7 +367,6 @@ QLoRA goes further: it compresses the frozen base weights to 4-bit NF4 format, c
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU' },
       { field: 'numGPUs', check: 'unchanged', label: 'Did not change GPU count' },
-      { field: 'sequenceLength', check: 'unchanged', label: 'Did not change sequence length' },
     ],
     hints: [
       'Full fine-tuning updates every parameter. The optimizer must store momentum and variance for each one — this state is the dominant memory consumer during training. The more parameters you train, the more optimizer state you carry. Consider whether every parameter really needs updating.',
@@ -381,7 +377,10 @@ QLoRA goes further: it compresses the frozen base weights to 4-bit NF4 format, c
     skillsAwarded: ['memory-optimization'],
   },
 
-  // ── Mission 2-7: The Shipment ───────────────────────────────────────
+  // ── Mission 2-7: The Shipment ──────────────────────────────────────
+  // FP8 as compute accelerator — seqLen=16384 physics-enforces the lesson:
+  //   BF16 ceiling is 33.8% MFU, FP8 floor is 50.3% MFU — 45% threshold
+  //   sits cleanly between. No artificial locks needed.
   {
     id: 'mission-2-7',
     arcId: 'arc2-discovery',
@@ -389,49 +388,42 @@ QLoRA goes further: it compresses the frozen base weights to 4-bit NF4 format, c
     title: 'The Shipment',
     subtitle: 'Sixteen new GPUs, straight from Earth',
     learningObjectives: [
-      'Calculate weight memory as parameters × bytes-per-parameter and compare against total GPU capacity',
-      'Understand that reduced-precision formats (FP8, INT8) halve per-parameter storage compared to BF16',
-      'Deploy a model that exceeds total GPU memory at BF16 by switching to a more compact precision',
+      'Understand that FP8 activates dedicated hardware acceleration on Hopper GPUs, increasing compute throughput beyond what BF16 achieves',
+      'Recognize the difference between precision as a storage format and precision as a compute accelerator',
     ],
-    briefing: `A resupply drone from Earth catches the Meridian — launched years after departure on a faster trajectory, it has finally closed the gap. Inside: two sealed compute modules, each containing 8 H100 GPUs with 80 GB each and high-bandwidth interconnects. And on the drone's solid-state storage banks: model weights too large to transmit over the interstellar relay, including a 405-billion-parameter model — far beyond anything the ship has run before.
+    briefing: `A resupply drone from Earth catches the Meridian — launched years after departure on a faster trajectory, it has finally closed the gap. Inside: two sealed compute modules, each containing eight of the most powerful GPUs ever built, and on the drone's storage banks, a 405-billion-parameter model too large to transmit over the interstellar relay.
 
-"Deploy the 405B immediately," Lindqvist orders. "Chen's team has been waiting for a model large enough to decode the deeper structure — give it to them." The configuration is loaded, weights distributed across all eight GPUs, and the system immediately reports out of memory. The model's weight footprint at current precision simply exceeds the total capacity of the cluster.
+Okafor finally has training-capable hardware. She loads an 8B model for biosignature sequence training on the new cluster and launches the first run. The results come back and she stares at the utilization readout, frowning. "These are supposed to be the fastest GPUs ever built. Why is the compute utilization no better than the old hardware?"`,
+    successNarrative: `Okafor's training run reveals something unexpected about the new hardware. FP8 isn't just a smaller number format — the H100's Transformer Engine has dedicated FP8 matrix multiply units that process roughly twice the operations per cycle compared to BF16 Tensor Cores. Same model, same config, same GPUs — switching the precision format activates fundamentally faster hardware.
 
-No parallelism trick can help when the raw data doesn't fit. But these new H100 GPUs have capabilities the old hardware didn't. Make the 405B model load and serve requests.`,
-    successNarrative: `The 405B model loads for the first time. Chen's analysis immediately jumps in resolution — structures in the signal that were noise at 70B now resolve into distinct, repeating patterns. The deeper model sees things the smaller one couldn't.
+This is the difference between precision as storage (fewer bytes per parameter, which saves memory) and precision as a compute accelerator (a different arithmetic format that the hardware executes faster). The A100s never had this capability. The H100s had it all along — it just needed to be turned on.
 
-Dropping from BF16 (2 bytes per parameter) to an 8-bit format (1 byte) halves weight memory from 810 GB to ~405 GB. Eight H100s with 80 GB each provide 640 GB — more than enough.
-
-The H100's Transformer Engine natively supports 8-bit matrix multiplications — both FP8 and INT8 — at roughly double the throughput of BF16. Reduced precision doesn't just save memory; it makes the model faster on the same hardware.`,
-    primaryMode: 'inference',
+Okafor watches the utilization readout climb past 50%. "Now that's what I expected from this hardware."`,
+    primaryMode: 'training',
     setup: {
-      modelId: 'llama3-405b',
+      modelId: 'llama3.1-8b',
       gpuId: 'h100-sxm',
       numGPUs: 8,
       gpusPerNode: 8,
-      tensorParallel: 8,
-      weightPrecision: 'bf16',
-      batchSize: 1,
-      inputSeqLen: 1024,
-      outputSeqLen: 512,
+      strategyType: 'fsdp',
+      mixedPrecision: 'bf16',
+      globalBatchSize: 64,
+      microBatchSize: 2,
+      sequenceLength: 16384,
+      activationCheckpointing: true,
+      checkpointingGranularity: 'selective',
+      flashAttention: true,
     },
     winningCriteria: [
-      { field: 'success', operator: '==', value: true, label: 'Model fits in memory' },
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 30, label: 'Throughput > 30 tok/s' },
+      { field: 'success', operator: '==', value: true, label: 'Training fits in memory' },
+      { field: 'mfu', operator: '>', value: 0.45, label: 'MFU > 45%' },
     ],
     expectedChanges: [
-      { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
-      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
-      { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU' },
-      { field: 'numGPUs', check: 'unchanged', label: 'Did not change GPU count' },
-      { field: 'tensorParallel', check: 'unchanged', label: 'Did not change TP' },
-      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
-      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
+      { field: 'precision', check: 'changed', label: 'Changed training precision' },
     ],
     hints: [
-      'Calculate the total weight memory: parameters × bytes per parameter at the current precision. Then calculate total GPU memory: number of GPUs × memory per GPU. If the first number exceeds the second, no parallelism strategy can help — the data itself doesn\'t fit.',
-      'Different precision formats store each parameter in different numbers of bytes. BF16 uses 2 bytes. Some newer GPU architectures support formats that use fewer bytes per parameter while maintaining inference quality — and also increase effective compute throughput.',
-      'Look for the Weight Precision selector in inference settings. Consider what precision options the H100 hardware supports that the older GPUs didn\'t. Halving the bytes per parameter halves the total weight memory.',
+      'The training run works at BF16, but the MFU is lower than you\'d expect from hardware this powerful. The utilization bottleneck isn\'t communication or memory — it\'s arithmetic throughput. These GPUs have dedicated hardware for a precision format the ship has never used.',
+      'FP8 precision activates dedicated hardware acceleration. BF16 Tensor Cores process one set of operations per cycle; FP8 units process roughly twice as many. The effective throughput increase depends on what fraction of the workload is matrix multiplication.',
     ],
     prerequisites: ['mission-1-7', 'mission-2-2', 'mission-2-4'],
     skillsAwarded: ['precision'],
@@ -446,19 +438,20 @@ The H100's Transformer Engine natively supports 8-bit matrix multiplications —
     subtitle: 'Not all connections are equal',
     learningObjectives: [
       'Distinguish intra-node vs inter-node interconnect bandwidth',
-      'Understand why cross-node TP creates a communication bottleneck at every layer',
-      'Keep TP within a single node and use replicas across nodes for throughput',
+      'Understand why cross-node model splits create a communication bottleneck at every layer',
+      'Keep model splits within a single node and use replicas across nodes',
+      'Achieve both fast per-request response time and high aggregate throughput',
     ],
-    briefing: `"We have sixteen H100s," Lindqvist says. "I want the 405B running across all of them." The obvious approach: TP=16, splitting each layer across every GPU. Double the hardware, double the speed.
+    briefing: `Chen has been running signal analysis on the 70B model, but the finer structures in the data keep slipping through — the model isn't large enough to resolve them. Okafor loads the 405B from the resupply drone onto one compute module, then two. The throughput drops.
 
-But the results are abysmal. Sixteen GPUs are barely outperforming eight. Lindqvist reviews the throughput reports with visible frustration. "I doubled the hardware and got nothing. Explain." Spreading the work across both nodes has introduced a bottleneck that didn't exist when everything ran on a single node.
+"We doubled the hardware," Lindqvist says. "Why is it slower?" Okafor pulls the communication trace. Within each module, transfers between GPUs are near-instant. Between modules, every synchronization crosses a much slower link — and it happens at every layer.
 
-Get the 405B model serving at high throughput across all 16 GPUs.`,
-    successNarrative: `The 405B model serves requests from both nodes simultaneously. Two replicas, each running at full intra-node speed, deliver combined throughput that dwarfs the cross-node TP approach.
+Chen needs the 405B running at full speed — the scanner submits individual observations and waits for each analysis before targeting the next, so both total throughput and per-request speed matter. Get it serving at the throughput the science team needs across all sixteen GPUs.`,
+    successNarrative: `The 405B model serves requests from both modules simultaneously. Each replica runs at full intra-node speed, and the batched requests amortize the per-token weight reads across hundreds of concurrent analyses. Chen's spectral backlog clears within minutes.
 
-Not all connections are equal. Within a single node, GPU interconnects deliver hundreds of GB/s per link — TP AllReduce costs almost nothing. Between nodes, the inter-node fabric has significantly less bandwidth. TP=16 across 2 nodes forced every layer's synchronization through that slower link.
+Not all connections are equal. Within a single module, the fast GPU interconnect makes per-layer synchronization nearly free. Between modules, the inter-module fabric has a fraction of that bandwidth. Spreading the model across both modules forced every layer's synchronization through the slower link — and with hundreds of layers, the overhead dominated.
 
-By keeping TP within a node (TP=8) and using the second node as a separate replica, each model copy runs at full intra-node speed. The inter-node fabric handles only the load balancer traffic — negligible compared to per-layer AllReduce. Two fast replicas beat one slow one.`,
+By keeping each model copy within one module and using the second module as a separate replica, the synchronization stays on fast local links. Then batching transforms each replica from a single-request server to a high-throughput engine — the same weight read serves hundreds of concurrent tokens, pushing utilization from idle to saturated.`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3-405b',
@@ -466,28 +459,27 @@ By keeping TP within a node (TP=8) and using the second node as a separate repli
       numGPUs: 16,
       gpusPerNode: 8,
       tensorParallel: 16,
-      weightPrecision: 'bf16',
+      weightPrecision: 'fp8',
       batchSize: 1,
       inputSeqLen: 1024,
       outputSeqLen: 512,
     },
     winningCriteria: [
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 80, label: 'Throughput > 80 tok/s' },
+      { field: 'throughput.tokensPerSecond', operator: '>', value: 2000, label: 'Throughput > 2,000 tok/s' },
+      { field: 'latency.tpot', operator: '<', value: 25, label: 'Per-token latency < 25ms' },
     ],
     expectedChanges: [
       { field: 'tensorParallel', check: 'decreased', label: 'Reduced tensor parallelism' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU' },
-      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
-      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
-      'Not all GPU connections are equal. Within a single node, GPUs communicate through a high-bandwidth interconnect — fundamentally faster than the inter-node network fabric. TP requires synchronization after every transformer layer. Consider what happens when every layer\'s synchronization must cross the slower link.',
-      'Keeping TP within a single node confines the per-layer synchronization to the fast local interconnect. Crossing the node boundary for every layer is what makes cross-node TP devastatingly slow — the per-layer overhead compounds across dozens of layers.',
-      'If each model copy uses only one node\'s worth of GPUs, the second node can serve as a separate replica handling requests in parallel. You may need to adjust weight precision to fit the model at the new TP degree — the new GPUs support precision formats the old hardware didn\'t.',
+      'Not all GPU connections are equal. Within a single compute module, GPUs communicate through a high-bandwidth local interconnect. Between modules, the inter-module fabric is much slower. When every layer\'s synchronization must cross that slower link, the overhead compounds across all layers.',
+      'Keeping the model split within a single module confines the per-layer synchronization to the fast local interconnect. The second module can then serve as an independent copy handling separate requests in parallel — two fast replicas instead of one slow split. But at batch size 1, each replica processes just one request at a time. The hardware can handle far more concurrency.',
+      'Once you fix the topology (model split within each module, not across both), increase the batch size. More concurrent requests per replica means the weight reads are amortized across all of them — each GPU reads the weights once and applies them to the entire batch simultaneously. The scanner needs each individual request answered quickly too — not just high total throughput.',
     ],
-    prerequisites: ['mission-2-7'],
-    skillsAwarded: ['hardware'],
+    prerequisites: ['mission-2-7', 'mission-1-4'],
+    skillsAwarded: ['hardware', 'batching'],
   },
 
   // ── Mission 2-9: The Pipeline ───────────────────────────────────────
@@ -502,9 +494,11 @@ By keeping TP within a node (TP=8) and using the second node as a separate repli
       'Compare P2P pipeline communication vs collective AllGather communication costs',
       'Configure PP to move cross-node communication from expensive collectives to cheap P2P transfers',
     ],
-    briefing: `Okafor needs both compute nodes training together on the 70B model — the dataset is enormous and time is critical. "Every step, the AllGather has to cross the inter-node link," she says, pointing at the MFU trace. "We're spending more time waiting on the network than doing math."
+    briefing: `Okafor needs both compute nodes training together on the 70B model — the dataset is enormous and time is critical. "Eight-way split per node is solid — fast interconnect, no bottleneck," she says. "But every step, the weight synchronization has to cross between nodes. More time waiting on the network than doing math."
 
-There has to be a better way to divide work between the two nodes — one that doesn't force heavy collective traffic across the slower inter-node fabric every step.`,
+The way the nodes share work can't be right — not if every step forces this much traffic across the slower inter-node fabric.
+
+The training recipe has been validated — batch size, precision, and sequence length are calibrated for convergence on this dataset. The only question is how the two nodes should coordinate.`,
     successNarrative: `Both compute nodes are training the 70B model with pipeline-parallel efficiency. Each node handles half the layers, with activations flowing between them as a simple point-to-point stream.
 
 Not all cross-node communication is equal. FSDP AllGather is a collective — every GPU participates, and the operation is bounded by the slowest link. Pipeline parallelism uses point-to-point transfers: one GPU sends activations to the next stage. P2P transfers are much cheaper over inter-node fabric.
@@ -533,14 +527,18 @@ The tradeoff is the pipeline bubble — idle time during ramp-up and ramp-down o
     ],
     expectedChanges: [
       { field: 'ppDegree', check: 'increased', label: 'Increased pipeline parallelism' },
+      { field: 'tpDegree', check: 'unchanged', label: 'Tensor split is fixed (checkpoint format)' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU' },
       { field: 'numGPUs', check: 'unchanged', label: 'Did not change GPU count' },
-      { field: 'sequenceLength', check: 'unchanged', label: 'Did not change sequence length' },
+      { field: 'globalBatchSize', check: 'unchanged', label: 'Batch size is calibrated for convergence' },
+      { field: 'microBatchSize', check: 'unchanged', label: 'Micro-batch size is calibrated for convergence' },
+      { field: 'precision', check: 'unchanged', label: 'Training precision is fixed for numerical stability' },
+      { field: 'sequenceLength', check: 'unchanged', label: 'Sequence length is fixed by sensor protocol' },
     ],
     hints: [
       'There are two fundamentally different ways to split a model across devices. One splits each layer horizontally — every GPU computes a slice of every layer (requiring collective synchronization). The other splits vertically — different devices handle different layers, with data flowing through them like an assembly line.',
-      'Collective operations (like AllGather) require every participating GPU to communicate. Point-to-point transfers only require neighbors to exchange data. Over slower inter-node fabric, the type of communication matters as much as the volume. Consider which parallelism dimensions are currently crossing the node boundary.',
+      'Collective operations (like AllGather) require every participating GPU to communicate. Point-to-point transfers only require neighbors to exchange data. Over slower inter-node fabric, the type of communication matters as much as the volume. The tensor-parallel split can\'t change mid-run — consider what other dimensions could change how nodes coordinate.',
       'The Pipeline Parallel setting controls vertical model splitting. Increasing it introduces a "pipeline bubble" (idle time during ramp-up/ramp-down), but changes the nature of cross-node communication. Consider the tradeoff: some idle time versus expensive collective operations every step.',
     ],
     prerequisites: ['mission-2-8'],
@@ -553,15 +551,15 @@ The tradeoff is the pipeline bubble — idle time during ramp-up and ramp-down o
     arcId: 'arc2-discovery',
     order: 10,
     title: 'The Protein Problem',
-    subtitle: 'Two critical jobs. One ship',
+    subtitle: 'Split the fleet',
     learningObjectives: [
-      'Optimize training MFU through precision, checkpointing, and batch sizing',
+      'Optimize training MFU through precision and activation checkpointing',
       'Apply inference optimization skills to a latency-constrained workload',
       'Manage two independent workloads across different hardware pools',
     ],
     briefing: `Signal analysis has revealed molecular structures embedded in the data — possibly protein folding patterns. Dr. Patel needs to fine-tune a model for enzymatic analysis, but Chen's signal decoding can't stop.
 
-"The folding geometries in this signal — they're not random. Something is manufacturing proteins down there," Patel says, spreading the analysis across the briefing table. "I need the H100 cluster."
+"The folding geometries in this signal — they're not random," Patel says, spreading the analysis across the briefing table. "I need the H100 cluster. Full fine-tuning — the biochemistry is too alien for adapters — with batches of eight structural families."
 
 Chen doesn't look up from the signal feed. "I need continuous coverage. Every gap in the decoder is data we lose permanently."
 
@@ -570,9 +568,9 @@ Lindqvist makes the call. "Chen keeps the A100 array for inference. Patel gets t
 Two workloads, two hardware pools, no room for compromise. Make them both work.`,
     successNarrative: `Both workloads run simultaneously. Patel's protein model trains at high efficiency on the H100s while Chen's signal decoder serves responses at acceptable latency on the A100s. The ship's compute resources are fully utilized, every GPU earning its power draw.
 
-Production ML runs multiple workloads on limited hardware. Training demands high throughput and GPU utilization. Inference demands low latency and reliable memory headroom. Optimizing one doesn't optimize the other — each requires its own set of choices about precision, parallelism, and batching.
+On a ship with finite power and finite silicon, two workloads means two different sets of tradeoffs. Training needs throughput — batch size, precision, parallelism all tuned to keep the compute units fed. Inference needs responsiveness — low latency, headroom for burst traffic, enough memory to serve without crashing. The same configuration won't do both.
 
-The skills from every previous mission converge here. FP8 for training throughput. TP for inference latency. Activation checkpointing for memory headroom. Quantization for model fitting. No single trick — a toolbox.`,
+Everything you've done on this ship has been practice for this.`,
     primaryMode: 'training',
     setup: {
       modelId: 'llama3.1-8b',
@@ -609,13 +607,14 @@ The skills from every previous mission converge here. FP8 for training throughpu
         },
         winningCriteria: [
           { field: 'success', operator: '==', value: true, label: 'Training fits in memory' },
-          { field: 'mfu', operator: '>', value: 0.50, label: 'MFU > 50%' },
+          { field: 'mfu', operator: '>', value: 0.52, label: 'MFU > 52%' },
         ],
         expectedChanges: [
           { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
           { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU' },
           { field: 'numGPUs', check: 'unchanged', label: 'Did not change GPU count' },
-          { field: 'sequenceLength', check: 'unchanged', label: 'Did not change sequence length' },
+          { field: 'microBatchSize', check: 'unchanged', label: 'Did not change micro-batch size' },
+          { field: 'finetuningMethod', check: 'unchanged', label: 'Did not change fine-tuning method' },
         ],
       },
       {
@@ -634,7 +633,7 @@ The skills from every previous mission converge here. FP8 for training throughpu
         },
         winningCriteria: [
           { field: 'success', operator: '==', value: true, label: 'Model loads successfully' },
-          { field: 'latency.ttft', operator: '<', value: 200, label: 'TTFT < 200ms' },
+          { field: 'latency.ttft', operator: '<', value: 300, label: 'TTFT < 300ms' },
         ],
         expectedChanges: [
           { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
@@ -646,11 +645,11 @@ The skills from every previous mission converge here. FP8 for training throughpu
       },
     ],
     hints: [
-      'The default config OOMs. Check the memory breakdown — what\'s consuming the most? Activation memory scales with micro-batch size and sequence length, while model weights and optimizer states are fixed costs. Understanding which category dominates tells you which knobs matter.',
-      'There are several ways to trade between memory and compute efficiency: precision affects both arithmetic throughput and memory footprint, checkpointing reduces activation memory at the cost of recomputation, and batch sizing changes how fully the GPU\'s compute units are saturated. Each combination has different tradeoffs — experiment to find one that clears 50% MFU.',
+      'The default config OOMs — activation memory at this batch size dwarfs everything else. You need to both fit in memory and hit high MFU. Two knobs matter: precision controls arithmetic throughput, and checkpointing controls how much activation memory the backward pass retains.',
+      'These H100s have dedicated FP8 hardware that roughly doubles arithmetic throughput compared to BF16. But FP8 alone doesn\'t solve the activation memory problem — you still need a way to keep activation memory under control during the backward pass.',
       'This mission has two objectives on different hardware pools. Training rewards throughput — maximizing useful compute per GPU-second. Inference rewards latency — minimizing time-to-first-token. The optimization strategies are different: for inference, consider how tensor parallelism and weight precision affect TTFT.',
     ],
-    prerequisites: ['mission-2-5', 'mission-2-7'],
+    prerequisites: ['mission-2-2', 'mission-2-5', 'mission-2-7'],
     skillsAwarded: ['resource-efficiency'],
   },
 
@@ -660,21 +659,21 @@ The skills from every previous mission converge here. FP8 for training throughpu
     arcId: 'arc2-discovery',
     order: 11,
     title: 'Life',
-    subtitle: 'Not a message. Not a machine',
+    subtitle: 'We are not alone',
     type: 'pivot',
     learningObjectives: [],
     briefing: `Dr. Patel's protein model produces its first results. The enzymatic catalysis patterns in the signal aren't random — they're self-replicating. Consuming energy, adapting, evolving.
 
-Not a message. Not a machine. Life.
+Life.
 
 Captain Lindqvist is quiet for a long time after Patel finishes the briefing. Then: "All-hands assembly. Twenty minutes."`,
-    successNarrative: `The bridge is silent as Patel presents the findings. "On Earth, we'd call these chaperone proteins," he says, his voice unsteady. "But the folding geometry is wrong — it's solving for a different gravity. A different ocean. This isn't contamination. This is an independent origin."
+    successNarrative: `No one speaks as Patel presents the findings. "On Earth, we'd call these chaperone proteins," he says, his voice unsteady. "But the folding geometry is wrong — it's solving for a different gravity. A different ocean. This isn't contamination. This is an independent origin."
 
 Self-replicating molecular structures. Metabolic cycles. Evolutionary pressure operating on proteins no Earth biochemist has ever seen.
 
-Lindqvist stares at the viewscreen for a long moment — the weight of two hundred sleeping lives behind every decision he's ever made, and now this. "Two hundred colonists left Earth looking for a home," he says finally. "Amend the mission brief."
+Lindqvist grips the command rail. Everything he's done on this ship — every hard call, every compromise — led here. "We left Earth looking for a home," he says finally. "Amend the mission brief."
 
-The universe is not empty. And the Meridian is heading straight for it.`,
+Something on Ross 128b is alive. And the Meridian has nowhere else to go.`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.1-8b',
@@ -682,7 +681,7 @@ The universe is not empty. And the Meridian is heading straight for it.`,
     },
     winningCriteria: [],
     hints: [],
-    prerequisites: ['mission-2-7', 'mission-2-10'],
+    prerequisites: ['mission-2-10'],
     skillsAwarded: [],
   },
 ];

@@ -6,7 +6,8 @@ import { Check, ArrowRight, Trophy } from 'lucide-react';
 import { useGameStore } from '../../stores/game.ts';
 import { getTaskById, getTasksForLevel } from '../../game/tasks/index.ts';
 import { CriteriaChecklist } from './CriteriaChecklist.tsx';
-import { GlossaryText } from './GlossaryText.tsx';
+import { NarrativeBlocks } from './NarrativeBlocks.tsx';
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
 
 export function SuccessModal() {
   const activeTaskId = useGameStore(s => s.activeTaskId);
@@ -25,7 +26,7 @@ export function SuccessModal() {
   const isLast = currentIndex >= tasks.length - 1;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <ModalBackdrop>
       <div
         className="bg-gray-900 border border-green-500/30 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
@@ -50,26 +51,7 @@ export function SuccessModal() {
         <div className="mb-6">
           <h4 className="text-sm font-medium text-gray-300 mb-2">What you learned</h4>
           <div className="space-y-2">
-            {task.successExplanation.trim().split('\n\n').map((block, i) => {
-              const lines = block.trim().split('\n');
-              const isList = lines.every(l => l.trimStart().startsWith('- '));
-              if (isList) {
-                return (
-                  <ul key={i} className="space-y-1 ml-1 border-l-2 border-gray-700 pl-3">
-                    {lines.map((line, j) => (
-                      <li key={j} className="text-sm text-gray-400 leading-relaxed">
-                        <GlossaryText text={line.trimStart().slice(2)} />
-                      </li>
-                    ))}
-                  </ul>
-                );
-              }
-              return (
-                <p key={i} className="text-sm text-gray-400 leading-relaxed">
-                  <GlossaryText text={block.trim()} />
-                </p>
-              );
-            })}
+            <NarrativeBlocks text={task.successExplanation} />
           </div>
         </div>
 
@@ -99,6 +81,6 @@ export function SuccessModal() {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

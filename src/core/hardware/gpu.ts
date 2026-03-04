@@ -967,8 +967,8 @@ export function getEffectiveTFLOPS(gpu: GPUSpec, dtype: string): number {
       return gpu.fp8TFLOPS || gpu.bf16TFLOPS || gpu.fp16TFLOPS;
     case 'fp4':
       return gpu.fp4TFLOPS || gpu.fp8TFLOPS || gpu.bf16TFLOPS || gpu.fp16TFLOPS;
-    case 'int8':
-      return gpu.int8TOPS || gpu.bf16TFLOPS || gpu.fp16TFLOPS;
+    case 'int8':   // W8A16: LLM.int8, bitsandbytes — dequant to BF16, compute at BF16
+      return gpu.bf16TFLOPS || gpu.fp16TFLOPS;
     case 'int4':
       return gpu.int4TOPS || gpu.int8TOPS || gpu.bf16TFLOPS || gpu.fp16TFLOPS;
     default:

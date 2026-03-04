@@ -677,7 +677,7 @@ export function InferenceGPUGridPanel({ embedded, hideTitle }: { embedded?: bool
       {showReplicaBox ? (
         <div className={`border border-dashed border-gray-600 rounded-lg w-fit ${embedded ? 'p-1 pt-2.5 mt-3' : 'p-2 pt-3.5 mx-auto mt-4'} relative`}>
           <span className={`absolute -top-2.5 left-3 ${embedded ? 'bg-gray-800 text-[8px]' : 'bg-gray-900 text-[10px]'} px-1.5 rounded text-gray-300 font-medium`}>
-            1 Serving Replica{ep > 1 && ` (${ep} EP groups)`}
+            1 Replica{ep > 1 && ` (${ep} EP groups)`}
           </span>
           {gridRows}
         </div>

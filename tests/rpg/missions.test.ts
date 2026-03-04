@@ -9,83 +9,8 @@
 import { describe, it, expect } from 'vitest';
 import { ALL_ARCS, ALL_MISSIONS, getMissionById, getMissionsForArc, isMissionUnlocked } from '../../src/rpg/missions/index.ts';
 import { ALL_SKILLS, getMissionsForSkill } from '../../src/rpg/skills.ts';
-import {
-  runInferenceSimulation,
-} from '../../src/core/inference/simulation.ts';
-import { INFERENCE_DEFAULTS } from '../../src/game/defaults.ts';
 import { evaluateCriterion } from '../../src/game/validation.ts';
-import { getGPUHourlyRate } from '../../src/core/cost/cloud.ts';
-import { calculateCostPerMillionTokens } from '../../src/core/cost/cloud.ts';
-import type { TaskSetup } from '../../src/game/types.ts';
-import { createMultiNodeCluster } from '../../src/core/hardware/topology.ts';
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function buildEffectiveInferenceConfig(setup: TaskSetup) {
-  return {
-    modelId: setup.modelId,
-    gpuId: setup.gpuId,
-    numGPUs: setup.numGPUs ?? 1,
-    gpusPerNode: setup.gpusPerNode ?? Math.min((setup.numGPUs ?? 1), 8),
-    weightPrecision: setup.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: setup.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: setup.batchSize ?? INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: setup.inputSeqLen ?? INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: setup.outputSeqLen ?? INFERENCE_DEFAULTS.outputSeqLen,
-    flashAttention: setup.flashAttention ?? INFERENCE_DEFAULTS.flashAttention,
-    pagedAttention: setup.pagedAttention ?? INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: setup.continuousBatching ?? INFERENCE_DEFAULTS.continuousBatching,
-    tensorParallel: setup.tensorParallel ?? INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: setup.expertParallel ?? INFERENCE_DEFAULTS.expertParallel,
-    speculativeDecoding: setup.speculativeDecoding ?? INFERENCE_DEFAULTS.speculativeDecoding,
-    draftModelId: setup.draftModelId ?? INFERENCE_DEFAULTS.draftModelId,
-    numSpeculativeTokens: setup.numSpeculativeTokens ?? INFERENCE_DEFAULTS.numSpeculativeTokens,
-    acceptanceRate: setup.acceptanceRate ?? INFERENCE_DEFAULTS.acceptanceRate,
-  };
-}
-
-function runInference(cfg: ReturnType<typeof buildEffectiveInferenceConfig>) {
-  const gpusPerNode = cfg.gpusPerNode;
-  const numNodes = Math.ceil(cfg.numGPUs / gpusPerNode);
-  const cluster = createMultiNodeCluster(cfg.gpuId, gpusPerNode, numNodes);
-  return runInferenceSimulation({
-    modelId: cfg.modelId,
-    gpuId: cfg.gpuId,
-    numGPUs: cfg.numGPUs,
-    clusterConfig: cluster,
-    batchSize: cfg.batchSize,
-    inputSeqLen: cfg.inputSeqLen,
-    outputSeqLen: cfg.outputSeqLen,
-    weightPrecision: cfg.weightPrecision,
-    kvCachePrecision: cfg.kvCachePrecision,
-    flashAttention: cfg.flashAttention,
-    pagedAttention: cfg.pagedAttention,
-    continuousBatching: cfg.continuousBatching,
-    tensorParallel: cfg.tensorParallel,
-    expertParallel: cfg.expertParallel,
-    speculativeEnabled: cfg.speculativeDecoding,
-    draftModelId: cfg.draftModelId ?? undefined,
-    numSpeculativeTokens: cfg.numSpeculativeTokens,
-    acceptanceRate: cfg.acceptanceRate,
-  });
-}
-
-function buildInferenceContext(setup: TaskSetup) {
-  const cfg = buildEffectiveInferenceConfig(setup);
-  const result = runInference(cfg);
-  if (!result) return null;
-  const rate = getGPUHourlyRate(cfg.gpuId).rate;
-  const memUtil = result.utilization?.memoryCapacityUtilization ?? 0;
-  return {
-    success: memUtil <= 1.0,
-    ...result,
-    numGPUs: cfg.numGPUs,
-    memoryUtilization: memUtil,
-    costPerMillionTokens: calculateCostPerMillionTokens(
-      rate, cfg.numGPUs, result.throughput?.tokensPerSecond ?? 0,
-    ),
-  };
-}
+import { buildInferenceContext } from '../helpers/simulation.ts';
 
 // ── Structure tests ──────────────────────────────────────────────────
 
@@ -298,18 +223,40 @@ describe('RPG Mission Calibration', () => {
   describe('Mission 1-3: Slow Reflexes', () => {
     const mission = getMissionById('mission-1-3')!;
 
-    it('default setup (8B INT8 on T4) → throughput < 60', () => {
+    it('default setup (8B INT8 on T4) → TPOT too high', () => {
       const ctx = buildInferenceContext(mission.setup);
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
-      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(60);
+      expect(ctx!.latency?.tpot).toBeGreaterThan(18);
     });
 
-    it('switch to RTX 4090 → throughput > 60', () => {
+    it('T4 INT4 batch=1 → still too slow', () => {
+      const ctx = buildInferenceContext({ ...mission.setup, weightPrecision: 'int4' });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.latency?.tpot).toBeGreaterThan(18);
+    });
+
+    it('T4 Q2_K batch=1 → still too slow', () => {
+      const ctx = buildInferenceContext({ ...mission.setup, weightPrecision: 'q2_k' });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.latency?.tpot).toBeGreaterThan(18);
+    });
+
+    it('T4 batch=4 → TPOT gets worse (physics blocks batch)', () => {
+      const ctx = buildInferenceContext({ ...mission.setup, batchSize: 4 });
+      const ctxDefault = buildInferenceContext(mission.setup);
+      expect(ctx).not.toBeNull();
+      expect(ctxDefault).not.toBeNull();
+      expect(ctx!.latency?.tpot).toBeGreaterThanOrEqual(ctxDefault!.latency!.tpot);
+    });
+
+    it('switch to RTX 4090 → TPOT < 18ms', () => {
       const ctx = buildInferenceContext({ ...mission.setup, gpuId: 'rtx-4090' });
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
-      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(60);
+      expect(ctx!.latency?.tpot).toBeLessThan(18);
 
       for (const criterion of mission.winningCriteria) {
         expect(evaluateCriterion(ctx, criterion), `Criterion: ${criterion.label}`).toBe(true);
@@ -420,6 +367,17 @@ describe('RPG Mission Calibration', () => {
       expect(evaluateCriterion(ctx, gpuCriterion!)).toBe(false);
     });
 
+    it('BF16 + TP=2 + numGPUs=2 → succeeds but memoryUtilization > 90%', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup,
+        tensorParallel: 2,
+        numGPUs: 2,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.memoryUtilization).toBeGreaterThan(0.90);
+    });
+
     it('INT8 + TP=2 + numGPUs=2 → all criteria pass', () => {
       const ctx = buildInferenceContext({
         ...mission.setup,
@@ -430,6 +388,7 @@ describe('RPG Mission Calibration', () => {
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
       expect(ctx!.numGPUs).toBe(2);
+      expect(ctx!.memoryUtilization).toBeLessThan(0.90);
 
       for (const criterion of mission.winningCriteria) {
         expect(evaluateCriterion(ctx, criterion), `Criterion: ${criterion.label}`).toBe(true);

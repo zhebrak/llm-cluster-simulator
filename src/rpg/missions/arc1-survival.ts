@@ -1,6 +1,7 @@
 /**
  * Arc 1: Survival — the ship is old, systems are failing.
  * Missions teach inference basics: memory, quantization, bandwidth, batching, TP, cost.
+ * See RPG Text Style Guide in ../types.ts for briefing/hint/success narrative rules.
  *
  * DAG (1-1 is sole entry point):
  *   1-1 Wake-Up Call
@@ -24,9 +25,11 @@ export const ARC1: RPGArc = {
   subtitle: 'The ship is old. Systems are failing',
   description: 'Critical ship systems need restoring. Each mission brings another subsystem back online.',
   order: 1,
-  briefing: `You are the Compute Officer aboard the GSV Meridian, a generation ship 80 years into its transit toward Kepler-442b. The ship carries 200 colonists in cryogenic stasis and a skeleton crew rotating through watch cycles.
+  briefing: `You are the Compute Officer aboard the GSV Meridian, a generation ship 80 years into its transit toward Ross 128b. The ship carries 200 colonists in cryogenic stasis and a skeleton crew rotating through watch cycles.
 
 Every critical system on board — navigation, life support monitoring, long-range sensors, crew AI — runs on GPU-accelerated ML models. Your job is to keep them running on hardware that was state-of-the-art at launch — 80 years ago.
+
+Fragments of your predecessor's maintenance logs survive in local storage — Compute Officer Martinez, the last to hold this post. The entries stop at Year 61. The ship has been running without a dedicated Compute Officer for nearly two decades.
 
 Systems are failing. Power budgets are tight. The compute bay holds a few aging GPUs. Every configuration decision you make has consequences — an OOM crash can blind the sensors, and wasted GPU-hours drain reserves that keep the crew alive.`,
 };
@@ -46,7 +49,7 @@ export const ARC1_MISSIONS: RPGMission[] = [
     ],
     briefing: `You're jolted awake by alarms. The generation ship's long-range sensor array has gone offline — the inference model that processes sensor data crashed during a power fluctuation.
 
-The diagnostic readout is blunt: the model was loaded at full precision, and the GPU's memory is exhausted. The card doesn't have enough VRAM to hold all the weights.
+The diagnostic readout is blunt: the model's weight memory nearly fills the GPU on its own, leaving no room for the working memory that inference requires. Total memory demand exceeds what the card can hold.
 
 Get the sensor model running. The hardware can't be swapped — you'll need to find a way to fit the model into the memory you have.`,
     successNarrative: `The sensor array flickers back to life. Stars resolve on the navigation display for the first time in hours.
@@ -55,7 +58,7 @@ Reducing weight precision compressed the model to fit within the GPU's memory bu
 
 Quantization like this is one of the most practical tools on a resource-constrained ship. The model runs slightly less precisely, but it runs.
 
-*Log entry, CO Martinez, Year 42: "T4s handle INT8 weights for the full sensor suite. Anything larger is a pipe dream with this VRAM. But she holds."*`,
+*Log entry, Compute Officer Martinez, Year 42: "T4s handle INT8 weights for the full sensor suite. Anything larger is a pipe dream with this VRAM. But she holds."*`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.1-8b',
@@ -73,13 +76,10 @@ Quantization like this is one of the most practical tools on a resource-constrai
       { field: 'weightPrecision', check: 'changed', label: 'Changed weight precision' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
-      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
-      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
-      'Check the memory breakdown on the dashboard — the model weights are the dominant cost. The Weight Precision selector shows the current bytes per parameter. Can you find a format that uses fewer?',
-      'Look at the Weight Precision selector in the sidebar. Lower-precision formats store each parameter in fewer bytes — some use just 1 byte per parameter.',
-      'A format that halves bytes per parameter would halve the memory footprint. Look for one that maintains reasonable accuracy for inference.',
+      'The model needs more memory than the GPU has. Is there a way to reduce how much memory the model takes?',
+      'The Weight Precision selector in the sidebar controls how many bytes each parameter takes. Lower precision means a smaller footprint.',
     ],
     prerequisites: [],
     skillsAwarded: ['precision'],
@@ -99,7 +99,7 @@ Quantization like this is one of the most practical tools on a resource-constrai
     ],
     briefing: `The navigation system needs an upgrade. Mission control's last transmission included a 70B-parameter model — far more capable than what we've been running.
 
-But the RTX 4090 has only 24GB of VRAM. The diagnostics panel shows the model overflowing memory by a wide margin, even after you try every quantization option available.
+But the RTX 4090 has only 24GB of memory. The diagnostics panel shows the model overflowing memory by a wide margin, even after you try every quantization option available.
 
 Some models are simply too large for a given GPU — no amount of compression can fit 70 billion parameters into 24GB. Find a model that actually fits the hardware.`,
     successNarrative: `Navigation charts update with fresh trajectory data. The smaller model processes waypoints efficiently within the 4090's memory budget.
@@ -123,8 +123,6 @@ Good model selection starts here: check whether the model can physically fit bef
       { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
       { field: 'modelId', check: 'changed', label: 'Changed to a different model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
-      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
-      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'Try every precision option and watch the memory breakdown. Even at the most aggressive quantization, calculate the floor — minimum bytes per parameter times 70 billion — and compare that to the GPU\'s total VRAM.',
@@ -144,17 +142,15 @@ Good model selection starts here: check whether the model can physically fit bef
     subtitle: 'Asteroids faster than the scanner',
     learningObjectives: [
       'Identify memory bandwidth as the bottleneck for autoregressive decode',
-      'Compare GPU bandwidth specs to predict relative throughput',
+      'Compare GPU bandwidth specs to predict relative per-token latency',
       'Choose a GPU based on bandwidth requirements, not just VRAM',
     ],
     briefing: `The sensor model is back online, but the response time is unacceptable. Asteroids appear on the display seconds after they enter scanner range — at current velocities, seconds are the entire margin between course correction and hull breach.
 
-The model runs on a T4 GPU with INT8 precision. It fits in memory fine, but the decode step — generating each output token — is painfully slow. Each token requires reading the entire model's weights from GPU memory.
-
-The bottleneck isn't compute or memory capacity. It's how fast the GPU can read data from its memory. Find a GPU with higher memory bandwidth.`,
+The model runs on a T4 GPU at reduced precision. It fits in memory fine, but each response takes an eternity — the crew can't track targets in real time.`,
     successNarrative: `Asteroid tracking snaps to real-time. Objects now appear on the display the instant they enter scanner range.
 
-The T4 had enough memory — the bottleneck was memory bandwidth. Autoregressive decode reads the full weight matrix for every output token, so throughput scales directly with how fast the GPU can stream data from memory. The new card's higher bandwidth translates directly into more tokens per second.
+The T4 had enough memory — the bottleneck was memory bandwidth. Autoregressive decode reads the full weight matrix for every output token, so per-token speed scales directly with how fast the GPU can stream data from memory. The new card's higher bandwidth translates directly into faster token generation.
 
 For decode-heavy workloads, memory bandwidth is the spec that matters most.
 
@@ -165,23 +161,24 @@ For decode-heavy workloads, memory bandwidth is the spec that matters most.
       gpuId: 't4',
       numGPUs: 1,
       weightPrecision: 'int8',
+      batchSize: 1,
+      speculativeDecoding: false,
       inputSeqLen: 1024,
       outputSeqLen: 512,
     },
     winningCriteria: [
-      { field: 'throughput.tokensPerSecond', operator: '>', value: 60, label: 'Throughput > 60 tok/s' },
+      { field: 'latency.tpot', operator: '<', value: 18, label: 'Per-token decode < 18 ms' },
     ],
     expectedChanges: [
       { field: 'numGPUs', check: 'unchanged', label: 'Did not add more GPUs' },
-      { field: 'gpuId', check: 'changed', label: 'Changed to a different GPU' },
+      { field: 'gpuId', check: 'changed', label: 'Upgraded to a faster GPU' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
-      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
-      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
+      { field: 'speculativeDecoding', check: 'unchanged', label: 'Did not use speculative decoding' },
     ],
     hints: [
-      'Autoregressive decode reads the entire weight matrix for every token generated. Throughput is limited by how fast the GPU can read from memory — its memory bandwidth.',
+      'Autoregressive decode reads the entire weight matrix for every token generated. The time per token is limited by how fast the GPU can read from memory — its memory bandwidth.',
       "Compare the T4's memory bandwidth to the RTX 4090's in the GPU specs — one has significantly higher bandwidth than the other.",
-      'Compare the memory bandwidth specs of your available GPUs. The one with higher bandwidth should push throughput well above the target.',
+      'The RTX 4090 has significantly higher memory bandwidth than the T4. Since per-token decode speed scales directly with bandwidth, switching to the higher-bandwidth card should push you well below the latency target.',
     ],
     prerequisites: ['mission-1-1'],
     skillsAwarded: ['hardware'],
@@ -227,8 +224,6 @@ Fewer sweeps, faster cycles, no pod left waiting.`,
       { field: 'batchSize', check: 'increased', label: 'Increased batch size' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change the model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change the GPU' },
-      { field: 'inputSeqLen', check: 'unchanged', label: 'Did not change input sequence length' },
-      { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
       'At batch=1, every token generation reads the full model weights from GPU memory. The compute cores are underutilized — they finish the math long before the next weight read arrives.',
@@ -253,7 +248,7 @@ Fewer sweeps, faster cycles, no pod left waiting.`,
     ],
     briefing: `The crew AI handles short exchanges fine, but extended conversations crash it. Crew members report the system freezing mid-sentence during long diagnostic discussions — the ones where context matters most.
 
-The memory trace tells the story: as conversations grow, GPU memory climbs steadily — then, past a certain length, it spikes catastrophically. Short exchanges barely register. Long ones hit a wall. The model's weights haven't changed. Something else is growing with every token the conversation produces, and at 128K tokens it overwhelms the GPU entirely.
+The memory trace tells the story: as conversations grow, GPU memory climbs steadily — then, past a certain length, it spikes catastrophically. Short exchanges barely register. Long ones hit a wall. The model's weights haven't changed. Something else is growing with every token the conversation produces, and at 131K tokens it overwhelms the GPU entirely.
 
 The model isn't too large. The conversation is.`,
     successNarrative: `The crew AI terminal stabilizes. Extended diagnostic sessions run to completion, even at maximum context length.
@@ -309,7 +304,7 @@ Long conversations no longer mean runaway memory growth.
 
 The long-range scanner needs a major upgrade. A 70B-parameter model would give far better resolution than the 8B model currently running, but at BF16 precision it requires ~140GB — far more than any single GPU can hold.
 
-Prove these GPUs are operational. The model's weight matrices can be split across them — each GPU holds a fraction and synchronizes with the others after each layer.`,
+Prove these GPUs are operational. If the model is too large for one card, maybe four cards together can carry it.`,
     successNarrative: `The long-range scanner's resolution jumps by an order of magnitude. The 70B model resolves objects that the 8B model couldn't distinguish from noise. The A100s are confirmed operational.
 
 With tensor parallelism, the weight matrices are split across GPUs — each one stores and computes its fraction of every layer, then an AllReduce synchronizes the partial activations before the next layer begins. The 140GB model now fits across four 80GB cards.
@@ -340,11 +335,11 @@ The tradeoff is communication overhead between GPUs, but for a model this size, 
     ],
     hints: [
       'At BF16, the 70B model needs ~140GB of VRAM. Each A100 has 80GB — the model must be split across multiple GPUs.',
-      'Tensor parallelism shards weight matrices across GPUs. Each GPU holds 1/TP of the model and they synchronize after each layer via AllReduce.',
+      'If the model needs ~140GB and each GPU has 80GB, you need to split the model across enough GPUs that each one holds less than 80GB. Think about what division achieves that.',
       'Divide the total weight memory by different TP degrees to see how much each GPU would hold. Higher TP reduces per-GPU memory but adds communication overhead — find the degree that fits.',
     ],
     prerequisites: ['mission-1-2', 'mission-1-3'],
-    skillsAwarded: ['model-parallelism'],
+    skillsAwarded: ['memory-optimization', 'model-parallelism'],
   },
 
   // ── Mission 1-7: Fuel Budget ──────────────────────────────────────
@@ -357,13 +352,13 @@ The tradeoff is communication overhead between GPUs, but for a model this size, 
     learningObjectives: [
       'Optimize compute cost by reducing GPU count through quantization',
       'Combine quantization with TP adjustment to maintain latency under cost constraints',
-      'Evaluate the cost-performance tradeoff: every freed GPU saves $/hr',
+      'Evaluate the cost-performance tradeoff: every freed GPU reduces resource consumption',
     ],
     briefing: `The reactor feeds four A100 GPUs running the 70B scanner model — but the power draw is unsustainable. Engineering calculates the cost equivalent: every GPU-hour drains reserves that could keep life support running longer.
 
-The model works at TP=4, but you're using twice the hardware you need. Quantization can shrink the model's memory footprint so it fits on fewer GPUs. Fewer GPUs means less power, less heat, and more reserves for the journey ahead.
+Four GPUs at full load — that's the single biggest power draw on the ship outside the drive itself. There has to be a way to get the same capability from less hardware.
 
-Halve your costs. Keep the scanner model running, keep latency under control, but free up GPUs for other critical systems.`,
+Halve your costs. The scanner's input and output windows are fixed by the sensor protocol — you can't shorten them. Keep latency under control and leave memory headroom — a GPU running near capacity will crash if the scanner hits a burst.`,
     successNarrative: `Two A100s power down. The scanner holds steady — same model, same responsiveness, half the power draw. Engineering redirects the freed capacity to environmental systems.
 
 Quantization and parallelism work together. At BF16, the 70B model needs 140GB and four GPUs. At INT8, it shrinks to 70GB — two GPUs with TP=2. The same capability, half the hardware.
@@ -380,8 +375,8 @@ Every freed GPU is power the ship can spend elsewhere. Cost optimization on a ge
       outputSeqLen: 512,
     },
     winningCriteria: [
-      { field: 'success', operator: '==', value: true, label: 'Model fits in GPU memory' },
-      { field: 'latency.ttft', operator: '<', value: 500, label: 'TTFT < 500ms' },
+      { field: 'memoryUtilization', operator: '<', value: 0.85, label: 'Memory utilization < 85%' },
+      { field: 'latency.ttft', operator: '<', value: 600, label: 'TTFT < 600ms' },
       { field: 'numGPUs', operator: '<=', value: 2, label: 'Using 2 or fewer GPUs' },
     ],
     expectedChanges: [
@@ -393,7 +388,7 @@ Every freed GPU is power the ship can spend elsewhere. Cost optimization on a ge
       { field: 'outputSeqLen', check: 'unchanged', label: 'Did not change output sequence length' },
     ],
     hints: [
-      'Each A100 draws significant power. Four GPUs cost far more per hour than two — halving the count directly halves the energy drain.',
+      'Look at the current configuration — four GPUs running the same model. Every GPU you can free up saves that fraction of the power budget. The question is: can the model fit on fewer cards if you compress the weights?',
       'Quantization shrinks the model so fewer GPUs are needed. If you halve the bytes per parameter, you halve the total weight memory — how many 80GB cards does the compressed model need?',
       'Combine precision reduction with fewer GPUs. The math should tell you the minimum — calculate the compressed weight size and see how many 80GB cards it needs.',
     ],
@@ -410,16 +405,16 @@ Every freed GPU is power the ship can spend elsewhere. Cost optimization on a ge
     subtitle: 'Every display on the bridge lights up',
     type: 'pivot',
     learningObjectives: [],
-    briefing: `03:00 ship time. The bridge is dark except for instrument glow and the night watch dozing at her station. Then every display lights up at once.
+    briefing: `03:00 ship time. The bridge is dark except for instrument glow and the night watch dozing at their station. Then every display lights up at once.
 
-A structured, repeating signal from the direction of Kepler-442b. Not cosmic noise. Not instrument artifacts. A pattern with structure. With purpose.
+A structured, repeating signal from the direction of Ross 128b. Not cosmic noise. Not instrument artifacts. A pattern with structure. With purpose.
 
 The sensor array confirms it independently: the signal is real, originating from the star system the Meridian has been falling toward for 80 years. The crew AI flags Dr. Chen for an emergency wake cycle.`,
     successNarrative: `Dr. Chen arrives on the bridge, still shaking off cryo-fog. She stares at the signal analysis for a long time.
 
-"This isn't natural," she says quietly. "The repetition structure, the frequency modulation — this is encoded information. Something is broadcasting from Kepler-442b."
+"This isn't natural," she says quietly. "The repetition structure, the frequency modulation — this is encoded information. Something is broadcasting from Ross 128b."
 
-The bridge is silent. Eighty years of survival, and the universe just answered back.`,
+The bridge is silent. The void isn't empty after all.`,
     primaryMode: 'inference',
     setup: {
       modelId: 'llama3.1-8b',

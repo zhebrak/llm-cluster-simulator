@@ -303,6 +303,14 @@ export interface TPOverlapInput {
  * efficiency η captures the remaining CUDA/NCCL overhead.
  *
  * No per-strategy caps — η inherently limits overlap below 1.0.
+ *
+ * TODO: This models TP all-reduce as a monolithic cost. Modern frameworks decompose
+ * it into ReduceScatter + AllGather, where AG overlaps with the next GEMM. For
+ * compute-dominant configs (hidden/tp >> 1, i.e., all practical training), both
+ * models converge to near-complete hiding. The monolithic model predicts ~4% exposed
+ * (from the η term) vs <1% for per-layer RS/AG pipelining — a difference of <0.1pp
+ * MFU for tier 1 anchors. Compare with computeFSDPExposedComm() which already
+ * implements per-layer RS/AG decomposition for FSDP.
  */
 export function computeTPOverlap(input: TPOverlapInput): number {
   const c = _current;
@@ -318,6 +326,11 @@ export interface PPOverlapInput {
  * PP overlap efficiency.
  *
  * Formula: C/(C+T) × η
+ *
+ * TODO: Cross-node PP with TP>1 can use scatter-gather (Megatron-LM) to achieve
+ * tp × perNicBW effective bandwidth. The comm model in 3d-parallel.ts and
+ * pipeline-parallel.ts uses single-P2P bandwidth. Impact <0.01pp MFU — PP comm
+ * is dwarfed by compute for 175B+ models (C/(C+T) hides 95%+).
  */
 export function computePPOverlap(input: PPOverlapInput): number {
   const c = _current;

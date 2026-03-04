@@ -10,24 +10,11 @@ import { X, Award, Sparkles, Cpu, ChevronDown } from 'lucide-react';
 import { useRPGStore } from '../../stores/rpg.ts';
 import { useTheme } from '../../hooks/useTheme.ts';
 import { ALL_ARCS, getActiveArc } from '../../rpg/missions/index.ts';
-import { getMissionsForArc, isMissionUnlocked, getMissionById } from '../../rpg/missions/index.ts';
-import { ALL_SKILLS, getEarnedStars, getStarCounts } from '../../rpg/skills.ts';
+import { getMissionsForArc, isMissionUnlocked, getClosestUnmetPrereq } from '../../rpg/missions/index.ts';
+import { ALL_SKILLS, getEarnedStars, getStarCounts, getPlayerTitle } from '../../rpg/skills.ts';
 import { getAvailableTierIds, HARDWARE_PROGRESSION } from '../../rpg/hardware.ts';
-
-function getPlayerTitle(completedMissions: string[]): string | null {
-  const completed = new Set(completedMissions);
-  if (completed.has('mission-3-7')) return 'First Contact Commander';
-  if (completed.has('mission-3-1')) return 'Planetary Engineer';
-  if (completed.has('mission-2-11')) return 'Chief Compute Officer';
-  if (completed.has('mission-2-7')) return 'Fleet Architect';
-  if (completed.has('mission-2-4')) return 'Training Lead';
-  if (completed.has('mission-1-8')) return 'Signal Analyst';
-  // Fallback to count-based for early Arc 1
-  const count = completedMissions.length;
-  if (count >= 4) return 'Junior Compute Officer';
-  if (count >= 1) return 'Apprentice Compute Officer';
-  return null;
-}
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
+import { Tooltip } from '../ui/Tooltip.tsx';
 
 /** Hover-triggered tooltip showing all skills with star progression. */
 function SkillsTooltip({ completedMissions }: { completedMissions: string[] }) {
@@ -83,7 +70,7 @@ function SkillsTooltip({ completedMissions }: { completedMissions: string[] }) {
         <span>Level {earned}</span>
       </div>
 
-      {show && createPortal(
+      {show && earned > 0 && createPortal(
         <div
           className="fixed z-[60] bg-gray-950 border border-gray-700 rounded-lg shadow-xl p-2.5 w-[272px]"
           style={{ left: pos?.x ?? -9999, top: pos?.y ?? -9999, opacity: pos ? 1 : 0 }}
@@ -143,7 +130,7 @@ function EncryptedSlot() {
     <div className="px-3 py-2 text-sm font-mono text-gray-500/40">
       <div className="flex items-start gap-3">
         <span className="w-16 shrink-0 text-right flex justify-end items-center">
-          <span className="font-semibold">[ENCRYPTED]</span>
+          <span className="font-semibold">[UNKNOWN]</span>
         </span>
         <span className="tracking-widest text-gray-500 animate-cipher-pulse">{chars.join('')}</span>
       </div>
@@ -173,16 +160,16 @@ function ComputeBayTooltip({ completedMissions, newTierIds }: { completedMission
 
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    if (!show || !containerRef.current) { setPos(null); return; }
+  const tipRefCb = useCallback((node: HTMLDivElement | null) => {
+    if (!node || !containerRef.current) { setPos(null); return; }
     const r = containerRef.current.getBoundingClientRect();
     const pad = 8;
-    const tipWidth = 284;
+    const tipWidth = node.offsetWidth;
     let x = r.left + r.width / 2 - tipWidth / 2;
     x = Math.min(x, window.innerWidth - tipWidth - pad);
     x = Math.max(pad, x);
     setPos({ x, y: r.bottom + 4 });
-  }, [show]);
+  }, []);
 
   const hasNew = newTierIds.length > 0;
 
@@ -207,12 +194,13 @@ function ComputeBayTooltip({ completedMissions, newTierIds }: { completedMission
 
       {show && createPortal(
         <div
-          className="fixed z-[60] bg-gray-950 border border-gray-700 rounded-lg shadow-xl p-2.5 w-[284px]"
+          ref={tipRefCb}
+          className="fixed z-[60] bg-gray-950 border border-gray-700 rounded-lg shadow-xl p-2.5 w-fit max-w-[90vw]"
           style={{ left: pos?.x ?? -9999, top: pos?.y ?? -9999, opacity: pos ? 1 : 0 }}
           onMouseEnter={handleEnter}
           onMouseLeave={handleLeave}
         >
-          <div className="flex flex-wrap gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {(() => {
               const aggregated = new Map<string, { label: string; count: number }>();
               for (const tier of HARDWARE_PROGRESSION) {
@@ -308,7 +296,7 @@ export function MissionSelect() {
     : (isDark ? '/ship_dark.png' : '/ship_light.png');
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <ModalBackdrop>
       <div
         className="bg-gray-950 border border-gray-800 rounded-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}
@@ -336,12 +324,17 @@ export function MissionSelect() {
             Mission Log
           </h2>
           {/* Close button in top-right corner */}
-          <button
-            onClick={handleClose}
-            className="absolute top-2 right-2 text-gray-300 hover:text-white cursor-pointer p-1 rounded-full bg-black/30 hover:bg-black/50 backdrop-blur-sm transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip text={menuOpen ? 'Back to mission' : 'Exit game mode'} className="absolute top-2 right-2">
+            <button
+              onClick={handleClose}
+              className="cursor-pointer p-1 rounded-full bg-black/30 hover:bg-black/50 backdrop-blur-sm transition-colors"
+              style={{ color: 'rgba(255,255,255,0.7)' }}
+              onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.95)')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Sub-header */}
@@ -440,10 +433,7 @@ export function MissionSelect() {
 
                     {/* Locked regular: title + prerequisite hint */}
                     if (!isUnlocked && !isCompleted) {
-                      const unmetPrereq = mission.prerequisites
-                        .filter(id => !completedMissions.includes(id))
-                        .map(id => getMissionById(id))
-                        .find(Boolean);
+                      const unmetPrereq = getClosestUnmetPrereq(mission, completedMissions);
                       return (
                         <div key={mission.id} className="px-3 py-2 text-sm font-mono text-gray-500/40">
                           <div className="flex items-start gap-3">
@@ -516,6 +506,6 @@ export function MissionSelect() {
         </div>
 
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

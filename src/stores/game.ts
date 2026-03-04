@@ -17,8 +17,9 @@ import type { GameMode, GameDifficulty, ValidationResult } from '../game/types.t
 import { getTaskById, getTasksForLevel, isTaskUnlocked } from '../game/tasks/index.ts';
 import { buildValidationContext, validateTask, captureTaskConfig, validateExpectedChanges } from '../game/validation.ts';
 import type { TaskConfigSnapshot } from '../game/validation.ts';
-import { GAME_STORAGE_KEY, PRE_GAME_CONFIG_KEY, CONFIG_STORAGE_KEY } from '../game/constants.ts';
+import { GAME_STORAGE_KEY, PRE_GAME_CONFIG_KEY } from '../game/constants.ts';
 import { applySetupToConfig } from '../game/setup.ts';
+import { snapshotConfig, loadPersistedState, recoverOrphanedConfig } from './persistence.ts';
 import { useConfigStore } from './config.ts';
 import { useSimulationStore } from './simulation.ts';
 
@@ -167,42 +168,6 @@ function persistGameState(state: GameState): void {
   } catch { /* localStorage full or unavailable */ }
 }
 
-/**
- * Load persisted game state from localStorage.
- */
-function loadPersistedGameState(): Partial<GameState> {
-  try {
-    const raw = localStorage.getItem(GAME_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Snapshot the current config state for crash recovery.
- */
-function snapshotConfig(): string | null {
-  try {
-    const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
-    return raw;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Restore config from a snapshot string.
- */
-function restoreConfigSnapshot(snapshot: string | null): void {
-  if (!snapshot) return;
-  try {
-    localStorage.setItem(CONFIG_STORAGE_KEY, snapshot);
-    // Reload the page to pick up restored config cleanly
-    // Instead, we'll just set it and let the next page load handle it
-  } catch { /* ignore */ }
-}
 
 /**
  * Apply task setup to config store using shared helpers, then capture
@@ -223,16 +188,10 @@ function applyTaskSetup(taskId: string): void {
 }
 
 // Load initial state
-const persisted = loadPersistedGameState();
+const persisted = loadPersistedState<GameState>(GAME_STORAGE_KEY);
 
 // Crash recovery: if pre-game config exists but game is not active, restore
-try {
-  const preGameConfig = localStorage.getItem(PRE_GAME_CONFIG_KEY);
-  if (preGameConfig && !persisted.active) {
-    restoreConfigSnapshot(preGameConfig);
-    localStorage.removeItem(PRE_GAME_CONFIG_KEY);
-  }
-} catch { /* ignore */ }
+recoverOrphanedConfig(PRE_GAME_CONFIG_KEY, persisted.active ?? false);
 
 export const useGameStore = create<GameState>()(
   immer((set, get) => ({

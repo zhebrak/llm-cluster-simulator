@@ -10,7 +10,8 @@ import { useRPGStore } from '../../stores/rpg.ts';
 import { getMissionById } from '../../rpg/missions/index.ts';
 import { getSkillAwardsForMission } from '../../rpg/skills.ts';
 import { CriteriaChecklist } from '../game/CriteriaChecklist.tsx';
-import { GlossaryText } from '../game/GlossaryText.tsx';
+import { NarrativeBlocks } from '../game/NarrativeBlocks.tsx';
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
 
 export function MissionSuccess() {
   const activeMissionId = useRPGStore(s => s.activeMissionId);
@@ -37,7 +38,7 @@ export function MissionSuccess() {
       ? mission.objectives!.find(o => o.id === activeObjectiveId)
       : null;
     return (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+      <ModalBackdrop>
         <div
           className="bg-gray-950 border border-teal-500/30 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
           onClick={e => e.stopPropagation()}
@@ -105,7 +106,7 @@ export function MissionSuccess() {
             </button>
           </div>
         </div>
-      </div>
+      </ModalBackdrop>
     );
   }
 
@@ -122,7 +123,7 @@ export function MissionSuccess() {
     : mission.winningCriteria;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <ModalBackdrop>
       <div
         className="bg-gray-950 border border-amber-500/30 rounded-xl p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
@@ -177,26 +178,7 @@ export function MissionSuccess() {
         {/* Success narrative */}
         <div className="mb-6">
           <div className="space-y-2">
-            {mission.successNarrative.trim().split('\n\n').map((block, i) => {
-              const lines = block.trim().split('\n');
-              const isList = lines.every(l => l.trimStart().startsWith('- '));
-              if (isList) {
-                return (
-                  <ul key={i} className="space-y-1 ml-1 border-l-2 border-gray-700 pl-3">
-                    {lines.map((line, j) => (
-                      <li key={j} className="text-sm text-gray-300/70 leading-relaxed font-mono">
-                        <GlossaryText text={line.trimStart().slice(2)} />
-                      </li>
-                    ))}
-                  </ul>
-                );
-              }
-              return (
-                <p key={i} className="text-sm text-gray-300/70 leading-relaxed font-mono">
-                  <GlossaryText text={block.trim()} />
-                </p>
-              );
-            })}
+            <NarrativeBlocks text={mission.successNarrative} textClass="text-gray-300/70" mono />
           </div>
         </div>
 
@@ -217,6 +199,6 @@ export function MissionSuccess() {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

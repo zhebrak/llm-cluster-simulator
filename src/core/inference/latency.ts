@@ -221,8 +221,8 @@ export function getGPUTFLOPS(
     case 'fp8':
       result = gpu.fp8TFLOPS || gpu.bf16TFLOPS || gpu.fp16TFLOPS;
       break;
-    case 'int8':
-      result = gpu.int8TOPS || gpu.bf16TFLOPS || gpu.fp16TFLOPS;
+    case 'int8':   // W8A16: LLM.int8, bitsandbytes — dequant to BF16, compute at BF16
+      result = gpu.bf16TFLOPS || gpu.fp16TFLOPS;
       break;
     case 'int4':   // W4A16: GPTQ, AWQ — dequant to FP16, compute at FP16
       result = gpu.bf16TFLOPS || gpu.fp16TFLOPS;

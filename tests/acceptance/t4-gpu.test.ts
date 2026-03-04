@@ -134,8 +134,8 @@ describe('T4 dtype fallback chain', () => {
     expect(getEffectiveTFLOPS(T4, 'fp4')).toBe(65);
   });
 
-  it('T4 + int8 → native 130 TOPS', () => {
-    expect(getEffectiveTFLOPS(T4, 'int8')).toBe(130);
+  it('T4 + int8 → W8A16 falls back to fp16 (65 TFLOPS)', () => {
+    expect(getEffectiveTFLOPS(T4, 'int8')).toBe(65);
   });
 
   it('T4 + int4 → native 260 TOPS', () => {
@@ -341,8 +341,8 @@ describe('T4 inference: TFLOPS resolution', () => {
     expect(getGPUTFLOPS(T4, 'fp8')).toBe(65);
   });
 
-  it('int8 inference uses native 130 TOPS', () => {
-    expect(getGPUTFLOPS(T4, 'int8')).toBe(130);
+  it('int8 inference uses W8A16 — falls back to fp16 (65 TFLOPS)', () => {
+    expect(getGPUTFLOPS(T4, 'int8')).toBe(65);
   });
 
   it('int4 inference uses fp16 TFLOPS (W4A16 dequants to FP16)', () => {

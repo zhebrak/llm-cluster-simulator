@@ -129,6 +129,15 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             </p>
           </section>
 
+          <section>
+            <h3 className="text-lg font-medium text-white mb-2">Play Mode</h3>
+            <p className="text-gray-300">
+              Click <span className="text-amber-400 font-medium">Play</span> in the header to start narrative missions aboard a generation ship.
+              Configure real training and inference workloads to keep the ship's ML systems running as the story unfolds.
+              Each mission teaches distributed computing concepts through hands-on problem solving.
+            </p>
+          </section>
+
         </div>
 
         <div className="mt-6 pt-4 border-t border-gray-800 text-xs text-gray-500">

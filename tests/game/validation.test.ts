@@ -12,6 +12,7 @@ import {
 } from '../../src/game/validation.ts';
 import type { TaskConfigSnapshot } from '../../src/game/validation.ts';
 import type { WinningCriterion, ExpectedChange } from '../../src/game/types.ts';
+import { makeSnapshot as _makeSnapshot } from '../helpers/snapshots.ts';
 
 describe('resolvePath', () => {
   it('resolves top-level fields', () => {
@@ -120,21 +121,7 @@ describe('validateTask', () => {
 // ── validateExpectedChanges ──────────────────────────────────────────
 
 /** Helper: create a base snapshot with defaults */
-function makeSnapshot(overrides: Partial<TaskConfigSnapshot> = {}): TaskConfigSnapshot {
-  return {
-    modelId: 'llama3.1-8b', gpuId: 'a100-sxm-80gb', numGPUs: 1,
-    precision: 'fp32', activationCheckpointing: false, checkpointingGranularity: 'full',
-    flashAttention: false, globalBatchSize: 64, microBatchSize: 64,
-    sequenceLength: 2048, sequenceParallel: false, strategyType: 'ddp',
-    tpDegree: 1, ppDegree: 1, epDegree: 1, cpDegree: 1,
-    pipelineSchedule: '1f1b', interleavedStages: 1, finetuningMethod: 'full',
-    loraRank: 16, loraTargetModules: 'q_v',
-    weightPrecision: 'fp32', kvCachePrecision: 'fp16', batchSize: 1,
-    inputSeqLen: 512, outputSeqLen: 128, tensorParallel: 1, expertParallel: 1,
-    pagedAttention: false, continuousBatching: false, speculativeDecoding: false,
-    ...overrides,
-  };
-}
+const makeSnapshot = (overrides?: Partial<TaskConfigSnapshot>) => _makeSnapshot('training', overrides);
 
 function makeChange(field: string, check: ExpectedChange['check']): ExpectedChange {
   return { field, check, label: `test: ${field} ${check}` };

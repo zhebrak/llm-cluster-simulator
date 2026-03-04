@@ -7,174 +7,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateExpectedChanges } from '../../src/game/validation.ts';
-import type { TaskConfigSnapshot } from '../../src/game/validation.ts';
-import { getMissionById } from '../../src/rpg/missions/index.ts';
-import { INFERENCE_DEFAULTS, TRAINING_DEFAULTS } from '../../src/game/defaults.ts';
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function makeSnapshot(overrides: Partial<TaskConfigSnapshot> = {}): TaskConfigSnapshot {
-  return {
-    modelId: 'llama3.1-8b',
-    gpuId: 'a100-sxm-80gb',
-    numGPUs: 1,
-    precision: 'bf16',
-    activationCheckpointing: false,
-    checkpointingGranularity: 'full',
-    flashAttention: INFERENCE_DEFAULTS.flashAttention,
-    globalBatchSize: 64,
-    microBatchSize: 1,
-    sequenceLength: 1024,
-    sequenceParallel: false,
-    strategyType: 'ddp',
-    tpDegree: 1,
-    ppDegree: 1,
-    epDegree: 1,
-    cpDegree: 1,
-    pipelineSchedule: '1f1b',
-    interleavedStages: 1,
-    finetuningMethod: 'full',
-    loraRank: 16,
-    loraTargetModules: 'q_v',
-    weightPrecision: INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: INFERENCE_DEFAULTS.outputSeqLen,
-    tensorParallel: INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: INFERENCE_DEFAULTS.expertParallel,
-    pagedAttention: INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: INFERENCE_DEFAULTS.continuousBatching,
-    speculativeDecoding: INFERENCE_DEFAULTS.speculativeDecoding,
-    pricePerGPUHour: null,
-    ...overrides,
-  };
-}
-
-function makeSnapshotForMission(missionId: string, overrides: Partial<TaskConfigSnapshot> = {}): TaskConfigSnapshot {
-  const mission = getMissionById(missionId);
-  if (!mission) throw new Error(`Mission ${missionId} not found`);
-  const s = mission.setup;
-
-  if (mission.primaryMode === 'training') {
-    return makeSnapshot({
-      modelId: s.modelId,
-      gpuId: s.gpuId,
-      numGPUs: s.numGPUs ?? 1,
-      precision: s.mixedPrecision ?? TRAINING_DEFAULTS.mixedPrecision,
-      activationCheckpointing: s.activationCheckpointing ?? TRAINING_DEFAULTS.activationCheckpointing,
-      checkpointingGranularity: s.checkpointingGranularity ?? TRAINING_DEFAULTS.checkpointingGranularity,
-      flashAttention: s.flashAttention ?? TRAINING_DEFAULTS.flashAttention,
-      globalBatchSize: s.globalBatchSize ?? TRAINING_DEFAULTS.globalBatchSize,
-      microBatchSize: s.microBatchSize ?? TRAINING_DEFAULTS.microBatchSize,
-      sequenceLength: s.sequenceLength ?? TRAINING_DEFAULTS.sequenceLength,
-      sequenceParallel: s.sequenceParallel ?? TRAINING_DEFAULTS.sequenceParallel,
-      strategyType: s.strategyType ?? 'ddp',
-      tpDegree: s.tpDegree ?? TRAINING_DEFAULTS.tpDegree,
-      ppDegree: s.ppDegree ?? TRAINING_DEFAULTS.ppDegree,
-      epDegree: s.epDegree ?? TRAINING_DEFAULTS.epDegree,
-      cpDegree: s.cpDegree ?? TRAINING_DEFAULTS.cpDegree,
-      pipelineSchedule: s.pipelineSchedule ?? TRAINING_DEFAULTS.pipelineSchedule,
-      interleavedStages: s.interleavedStages ?? TRAINING_DEFAULTS.interleavedStages,
-      finetuningMethod: s.finetuningMethod ?? TRAINING_DEFAULTS.finetuningMethod,
-      ...overrides,
-    });
-  }
-
-  return makeSnapshot({
-    modelId: s.modelId,
-    gpuId: s.gpuId,
-    numGPUs: s.numGPUs ?? 1,
-    weightPrecision: s.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: s.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: s.batchSize ?? INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: s.inputSeqLen ?? INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: s.outputSeqLen ?? INFERENCE_DEFAULTS.outputSeqLen,
-    flashAttention: s.flashAttention ?? INFERENCE_DEFAULTS.flashAttention,
-    pagedAttention: s.pagedAttention ?? INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: s.continuousBatching ?? INFERENCE_DEFAULTS.continuousBatching,
-    tensorParallel: s.tensorParallel ?? INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: s.expertParallel ?? INFERENCE_DEFAULTS.expertParallel,
-    speculativeDecoding: s.speculativeDecoding ?? INFERENCE_DEFAULTS.speculativeDecoding,
-    ...overrides,
-  });
-}
-
-function makeSnapshotForObjective(
-  missionId: string,
-  objectiveId: string,
-  overrides: Partial<TaskConfigSnapshot> = {},
-): TaskConfigSnapshot {
-  const mission = getMissionById(missionId);
-  if (!mission || !mission.objectives) throw new Error(`Mission ${missionId} has no objectives`);
-  const obj = mission.objectives.find(o => o.id === objectiveId);
-  if (!obj) throw new Error(`Objective ${objectiveId} not found`);
-  const s = obj.setup;
-
-  if (obj.primaryMode === 'training') {
-    return makeSnapshot({
-      modelId: s.modelId,
-      gpuId: s.gpuId,
-      numGPUs: s.numGPUs ?? 1,
-      precision: s.mixedPrecision ?? TRAINING_DEFAULTS.mixedPrecision,
-      activationCheckpointing: s.activationCheckpointing ?? TRAINING_DEFAULTS.activationCheckpointing,
-      checkpointingGranularity: s.checkpointingGranularity ?? TRAINING_DEFAULTS.checkpointingGranularity,
-      flashAttention: s.flashAttention ?? TRAINING_DEFAULTS.flashAttention,
-      strategyType: s.strategyType ?? 'ddp',
-      finetuningMethod: s.finetuningMethod ?? TRAINING_DEFAULTS.finetuningMethod,
-      globalBatchSize: s.globalBatchSize ?? TRAINING_DEFAULTS.globalBatchSize,
-      microBatchSize: s.microBatchSize ?? TRAINING_DEFAULTS.microBatchSize,
-      sequenceLength: s.sequenceLength ?? TRAINING_DEFAULTS.sequenceLength,
-      sequenceParallel: s.sequenceParallel ?? TRAINING_DEFAULTS.sequenceParallel,
-      tpDegree: s.tpDegree ?? TRAINING_DEFAULTS.tpDegree,
-      ppDegree: s.ppDegree ?? TRAINING_DEFAULTS.ppDegree,
-      epDegree: s.epDegree ?? TRAINING_DEFAULTS.epDegree,
-      cpDegree: s.cpDegree ?? TRAINING_DEFAULTS.cpDegree,
-      pipelineSchedule: s.pipelineSchedule ?? TRAINING_DEFAULTS.pipelineSchedule,
-      interleavedStages: s.interleavedStages ?? TRAINING_DEFAULTS.interleavedStages,
-      ...overrides,
-    });
-  }
-
-  return makeSnapshot({
-    modelId: s.modelId,
-    gpuId: s.gpuId,
-    numGPUs: s.numGPUs ?? 1,
-    weightPrecision: s.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: s.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: s.batchSize ?? INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: s.inputSeqLen ?? INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: s.outputSeqLen ?? INFERENCE_DEFAULTS.outputSeqLen,
-    tensorParallel: s.tensorParallel ?? INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: s.expertParallel ?? INFERENCE_DEFAULTS.expertParallel,
-    continuousBatching: s.continuousBatching ?? INFERENCE_DEFAULTS.continuousBatching,
-    ...overrides,
-  });
-}
-
-function validate(missionId: string, snapshot: TaskConfigSnapshot, current: TaskConfigSnapshot) {
-  const mission = getMissionById(missionId);
-  if (!mission) throw new Error(`Mission ${missionId} not found`);
-  return validateExpectedChanges(snapshot, current, mission.expectedChanges);
-}
-
-function validateObjective(
-  missionId: string,
-  objectiveId: string,
-  snapshot: TaskConfigSnapshot,
-  current: TaskConfigSnapshot,
-) {
-  const mission = getMissionById(missionId);
-  if (!mission || !mission.objectives) throw new Error(`Mission ${missionId} has no objectives`);
-  const obj = mission.objectives.find(o => o.id === objectiveId);
-  if (!obj) throw new Error(`Objective ${objectiveId} not found`);
-  return validateExpectedChanges(snapshot, current, obj.expectedChanges ?? []);
-}
+import {
+  makeSnapshotForMission,
+  makeSnapshotForObjective,
+  validateMission as validate,
+  validateObjective,
+} from '../helpers/snapshots.ts';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Mission 3-1: Landfall (lesson: continuous batching)
-// expectedChanges: continuousBatching=enabled, model/gpu/numGPUs/TP/precision/batchSize/seqLens=unchanged
+// expectedChanges: model/gpu/numGPUs/seqLens=unchanged (scenario locks only)
+// Precision, batch size, TP, CB are unlocked — physics enforces the lesson
+// (no non-CB config can reach 12,500 tok/s threshold)
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('Mission 3-1 — Landfall (continuous batching)', () => {
@@ -184,12 +28,13 @@ describe('Mission 3-1 — Landfall (continuous batching)', () => {
     expect(validate('mission-3-1', snapshot,
       makeSnapshotForMission('mission-3-1', { continuousBatching: true })).valid).toBe(true);
   });
-  it('bypass: no changes', () => {
-    expect(validate('mission-3-1', snapshot, snapshot).valid).toBe(false);
-  });
-  it('bypass: increase batch size without CB', () => {
+  it('correct: enable CB + change precision (unlocked, physics enforces)', () => {
     expect(validate('mission-3-1', snapshot,
-      makeSnapshotForMission('mission-3-1', { batchSize: 64 })).valid).toBe(false);
+      makeSnapshotForMission('mission-3-1', { continuousBatching: true, weightPrecision: 'fp4' })).valid).toBe(true);
+  });
+  it('correct: enable CB + change batch size (unlocked)', () => {
+    expect(validate('mission-3-1', snapshot,
+      makeSnapshotForMission('mission-3-1', { continuousBatching: true, batchSize: 256 })).valid).toBe(true);
   });
   it('bypass: change model', () => {
     expect(validate('mission-3-1', snapshot,
@@ -198,10 +43,6 @@ describe('Mission 3-1 — Landfall (continuous batching)', () => {
   it('bypass: change GPU', () => {
     expect(validate('mission-3-1', snapshot,
       makeSnapshotForMission('mission-3-1', { gpuId: 'a100-80gb' })).valid).toBe(false);
-  });
-  it('bypass: change precision', () => {
-    expect(validate('mission-3-1', snapshot,
-      makeSnapshotForMission('mission-3-1', { weightPrecision: 'fp8' })).valid).toBe(false);
   });
 });
 
@@ -235,6 +76,26 @@ describe('Mission 3-2 — Deep Signal (context parallelism)', () => {
   it('bypass: change sequence length', () => {
     expect(validate('mission-3-2', snapshot,
       makeSnapshotForMission('mission-3-2', { sequenceLength: 8192 })).valid).toBe(false);
+  });
+  it('bypass: switch to full AC without CP (checkpointing strategy locked)', () => {
+    expect(validate('mission-3-2', snapshot,
+      makeSnapshotForMission('mission-3-2', { checkpointingGranularity: 'full' })).valid).toBe(false);
+  });
+  it('bypass: switch to LoRA without CP (training method locked)', () => {
+    expect(validate('mission-3-2', snapshot,
+      makeSnapshotForMission('mission-3-2', { finetuningMethod: 'lora' })).valid).toBe(false);
+  });
+  it('bypass: switch to QLoRA without CP (training method locked)', () => {
+    expect(validate('mission-3-2', snapshot,
+      makeSnapshotForMission('mission-3-2', { finetuningMethod: 'qlora' })).valid).toBe(false);
+  });
+  it('bypass: change strategy type without CP (strategy locked)', () => {
+    expect(validate('mission-3-2', snapshot,
+      makeSnapshotForMission('mission-3-2', { strategyType: 'fsdp' })).valid).toBe(false);
+  });
+  it('correct: CP=4 + GBS change (GBS unlocked, CP satisfies required change)', () => {
+    expect(validate('mission-3-2', snapshot,
+      makeSnapshotForMission('mission-3-2', { cpDegree: 4, globalBatchSize: 256 })).valid).toBe(true);
   });
 });
 
@@ -283,7 +144,7 @@ describe('Mission 3-3 — Alien Model (expert parallelism)', () => {
 // ═══════════════════════════════════════════════════════════════════════
 // Mission 3-4: Big Train (lesson: pipeline schedule + interleaving)
 // expectedChanges: pipelineSchedule=changed, interleavedStages=increased,
-//   model/gpu/numGPUs/PP/seqLen=unchanged
+//   model/gpu/numGPUs/PP/precision/GBS=unchanged
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('Mission 3-4 — Big Train (pipeline schedule)', () => {
@@ -311,6 +172,22 @@ describe('Mission 3-4 — Big Train (pipeline schedule)', () => {
     expect(validate('mission-3-4', snapshot,
       makeSnapshotForMission('mission-3-4', { modelId: 'llama3.3-70b' })).valid).toBe(false);
   });
+  it('bypass: change precision to FP8', () => {
+    expect(validate('mission-3-4', snapshot,
+      makeSnapshotForMission('mission-3-4', {
+        pipelineSchedule: 'interleaved-1f1b',
+        interleavedStages: 2,
+        precision: 'fp8',
+      })).valid).toBe(false);
+  });
+  it('bypass: increase GBS', () => {
+    expect(validate('mission-3-4', snapshot,
+      makeSnapshotForMission('mission-3-4', {
+        pipelineSchedule: 'interleaved-1f1b',
+        interleavedStages: 2,
+        globalBatchSize: 256,
+      })).valid).toBe(false);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -322,9 +199,17 @@ describe('Mission 3-5 — Resource War (multi-objective)', () => {
   describe('Objective: Biosignature training', () => {
     const snapshot = makeSnapshotForObjective('mission-3-5', 'obj-biosig-train');
 
-    it('correct: change precision to FP8', () => {
+    it('correct: change precision + enable AC', () => {
+      expect(validateObjective('mission-3-5', 'obj-biosig-train', snapshot,
+        makeSnapshotForObjective('mission-3-5', 'obj-biosig-train', { precision: 'fp8', activationCheckpointing: true })).valid).toBe(true);
+    });
+    it('correct: change precision only (AC not required)', () => {
       expect(validateObjective('mission-3-5', 'obj-biosig-train', snapshot,
         makeSnapshotForObjective('mission-3-5', 'obj-biosig-train', { precision: 'fp8' })).valid).toBe(true);
+    });
+    it('bypass: only enable AC (precision still BF16)', () => {
+      expect(validateObjective('mission-3-5', 'obj-biosig-train', snapshot,
+        makeSnapshotForObjective('mission-3-5', 'obj-biosig-train', { activationCheckpointing: true })).valid).toBe(false);
     });
     it('bypass: no changes', () => {
       expect(validateObjective('mission-3-5', 'obj-biosig-train', snapshot, snapshot).valid).toBe(false);
@@ -370,11 +255,11 @@ describe('Mission 3-5 — Resource War (multi-objective)', () => {
           continuousBatching: true,
         })).valid).toBe(false);
     });
-    it('bypass: increase batch without CB', () => {
+    it('correct: increase batch without CB (passes expected changes; TTFT criterion enforces CB)', () => {
       expect(validateObjective('mission-3-5', 'obj-probe-infer', snapshot,
         makeSnapshotForObjective('mission-3-5', 'obj-probe-infer', {
           batchSize: 32,
-        })).valid).toBe(false);
+        })).valid).toBe(true);
     });
     it('bypass: change model', () => {
       expect(validateObjective('mission-3-5', 'obj-probe-infer', snapshot,
@@ -424,6 +309,12 @@ describe('Mission 3-6 — All Systems Nominal (capstone)', () => {
           tpDegree: 4,
         })).valid).toBe(false);
     });
+    it('bypass: CP=4 + 1F1B + GBS bump (GBS locked)', () => {
+      expect(validateObjective('mission-3-6', 'obj-longctx-train', snapshot,
+        makeSnapshotForObjective('mission-3-6', 'obj-longctx-train', {
+          cpDegree: 4, globalBatchSize: 256,
+        })).valid).toBe(false);
+    });
   });
 
   describe('Objective: MoE training', () => {
@@ -444,10 +335,34 @@ describe('Mission 3-6 — All Systems Nominal (capstone)', () => {
     it('bypass: no changes', () => {
       expect(validateObjective('mission-3-6', 'obj-moe-train', snapshot, snapshot).valid).toBe(false);
     });
+    it('bypass: only change precision without EP', () => {
+      expect(validateObjective('mission-3-6', 'obj-moe-train', snapshot,
+        makeSnapshotForObjective('mission-3-6', 'obj-moe-train', {
+          precision: 'fp8',
+        })).valid).toBe(false);
+    });
     it('bypass: change model', () => {
       expect(validateObjective('mission-3-6', 'obj-moe-train', snapshot,
         makeSnapshotForObjective('mission-3-6', 'obj-moe-train', {
           modelId: 'llama3.1-8b',
+        })).valid).toBe(false);
+    });
+    it('bypass: EP + GBS bump (GBS locked)', () => {
+      expect(validateObjective('mission-3-6', 'obj-moe-train', snapshot,
+        makeSnapshotForObjective('mission-3-6', 'obj-moe-train', {
+          epDegree: 2, globalBatchSize: 512,
+        })).valid).toBe(false);
+    });
+    it('bypass: EP + TP reduction (TP locked)', () => {
+      expect(validateObjective('mission-3-6', 'obj-moe-train', snapshot,
+        makeSnapshotForObjective('mission-3-6', 'obj-moe-train', {
+          epDegree: 2, tpDegree: 4,
+        })).valid).toBe(false);
+    });
+    it('bypass: EP + seqLen increase (seqLen locked)', () => {
+      expect(validateObjective('mission-3-6', 'obj-moe-train', snapshot,
+        makeSnapshotForObjective('mission-3-6', 'obj-moe-train', {
+          epDegree: 2, sequenceLength: 8192,
         })).valid).toBe(false);
     });
   });
@@ -455,19 +370,19 @@ describe('Mission 3-6 — All Systems Nominal (capstone)', () => {
   describe('Objective: Feed inference', () => {
     const snapshot = makeSnapshotForObjective('mission-3-6', 'obj-feed-infer');
 
-    it('correct: change precision + enable CB', () => {
+    it('correct: increase batch + enable CB', () => {
       expect(validateObjective('mission-3-6', 'obj-feed-infer', snapshot,
         makeSnapshotForObjective('mission-3-6', 'obj-feed-infer', {
-          weightPrecision: 'fp8', continuousBatching: true,
+          batchSize: 32, continuousBatching: true,
         })).valid).toBe(true);
     });
-    it('bypass: only change precision', () => {
+    it('bypass: only increase batch (no CB)', () => {
       expect(validateObjective('mission-3-6', 'obj-feed-infer', snapshot,
         makeSnapshotForObjective('mission-3-6', 'obj-feed-infer', {
-          weightPrecision: 'fp8',
+          batchSize: 32,
         })).valid).toBe(false);
     });
-    it('bypass: only enable CB', () => {
+    it('bypass: only enable CB (batch still 1)', () => {
       expect(validateObjective('mission-3-6', 'obj-feed-infer', snapshot,
         makeSnapshotForObjective('mission-3-6', 'obj-feed-infer', {
           continuousBatching: true,

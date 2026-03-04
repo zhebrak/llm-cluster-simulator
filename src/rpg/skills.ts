@@ -5,9 +5,9 @@
  */
 
 import type { RPGSkill, RPGMission } from './types.ts';
-import { ALL_MISSIONS } from './missions/index.ts';
+import { ALL_MISSIONS, getMissionById, isMissionUnlocked } from './missions/index.ts';
 
-// ── Skill Catalog (8 skills, 24 total stars) ──────────────────────────
+// ── Skill Catalog (7 skills, 26 total stars) ──────────────────────────
 
 export const ALL_SKILLS: Record<string, RPGSkill> = {
   // ── Multi-star skills ───────────────────────────────────────────────
@@ -15,7 +15,7 @@ export const ALL_SKILLS: Record<string, RPGSkill> = {
     id: 'model-parallelism',
     name: 'Model Parallelism',
     description: 'Split models across GPUs using tensor, pipeline, context, and expert parallelism',
-    starLabels: ['Weight Sharding', 'Prefill Acceleration', 'Pipeline Stages', 'Ring Attention', 'Expert Distribution', 'Pipeline Scheduling'],
+    starLabels: ['Weight Sharding', 'Prefill Acceleration', 'TP Tradeoffs', 'Pipeline Stages', 'Ring Attention', 'Expert Distribution'],
   },
   precision: {
     id: 'precision',
@@ -33,25 +33,19 @@ export const ALL_SKILLS: Record<string, RPGSkill> = {
     id: 'resource-efficiency',
     name: 'Resource Efficiency',
     description: 'Minimize GPU cost through better hardware use',
-    starLabels: ['Cost Optimization', 'Training Efficiency', 'Cluster Allocation'],
+    starLabels: ['Cost Optimization', 'Distributed Training', 'Training Efficiency', 'Pipeline Scheduling', 'Cluster Allocation'],
   },
   batching: {
     id: 'batching',
     name: 'Batching',
     description: 'Use batching and scheduling to maximize GPU utilization across requests',
-    starLabels: ['Batch Sizing', 'Dynamic Scheduling'],
-  },
-  'data-parallelism': {
-    id: 'data-parallelism',
-    name: 'Data Parallelism',
-    description: 'Replicate models and distribute data across GPUs for throughput',
-    starLabels: ['Replica Scaling', 'Distributed Training'],
+    starLabels: ['Batch Sizing', 'Throughput Scaling', 'Dynamic Scheduling'],
   },
   'memory-optimization': {
     id: 'memory-optimization',
     name: 'Memory Optimization',
-    description: 'Reduce GPU memory usage through activation checkpointing and parameter-efficient fine-tuning',
-    starLabels: ['Activation Checkpointing', 'Adapter Fine-tuning'],
+    description: 'Reduce GPU memory usage through weight sharding, activation checkpointing, and parameter-efficient fine-tuning',
+    starLabels: ['Weight Sharding', 'Activation Checkpointing', 'Adapter Fine-tuning'],
   },
 
   'inference-optimization': {
@@ -102,6 +96,33 @@ export function getStarCounts(completedMissions: string[]): {
   }
 
   return { earned, total, touched, skillCount: skillIds.length };
+}
+
+/** Player rank title based on mission progress. Checked in priority (highest rank first). */
+export function getPlayerTitle(completedMissions: string[]): string {
+  const completed = new Set(completedMissions);
+  // Helper: true when all of a pivot's prerequisites are complete
+  const pivotReady = (id: string) => {
+    const m = getMissionById(id);
+    return m !== undefined && isMissionUnlocked(m, completedMissions);
+  };
+  if (pivotReady('mission-3-7'))        return 'First Contact Commander';
+  if (completed.has('mission-3-1'))     return 'Cluster Commander';
+  if (pivotReady('mission-2-11'))       return 'Chief Compute Officer';
+  if (completed.has('mission-2-7'))     return 'Systems Architect';
+  if (completed.has('mission-2-4'))     return 'Training Lead';
+  if (pivotReady('mission-1-8'))        return 'Senior Compute Officer';
+  if (completedMissions.length >= 4) return 'Inference Specialist';
+  return 'Compute Officer';  // default rank — always shown
+}
+
+/** Detect a rank promotion when completing a mission. No badge for the first title (null→title). */
+export function getPromotion(completedMissions: string[], missionId: string) {
+  const oldTitle = getPlayerTitle(completedMissions);
+  const withCurrent = completedMissions.includes(missionId)
+    ? completedMissions : [...completedMissions, missionId];
+  const newTitle = getPlayerTitle(withCurrent);
+  return { newTitle, isPromotion: newTitle !== oldTitle };
 }
 
 /** Skills awarded by a mission with current star info (for MissionSuccess). */

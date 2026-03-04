@@ -30,6 +30,22 @@ export function isMissionUnlocked(mission: RPGMission, completedIds: string[]): 
  * Return the arc matching the player's furthest progression.
  * Post-game completion state after mission-3-7 (The Reply).
  */
+/** Among a mission's unmet prerequisites, return the highest-order one (closest in the DAG). */
+export function getClosestUnmetPrereq(mission: RPGMission, completedIds: string[]): RPGMission | undefined {
+  const unmet = mission.prerequisites
+    .map(id => getMissionById(id))
+    .filter((m): m is RPGMission => m != null && !completedIds.includes(m.id));
+  if (unmet.length === 0) return undefined;
+  if (unmet.length === 1) return unmet[0];
+  // Pick the highest-order unmet prerequisite (closest in the DAG)
+  return unmet.sort((a, b) => {
+    const arcA = parseInt(a.arcId.match(/\d+/)?.[0] ?? '0');
+    const arcB = parseInt(b.arcId.match(/\d+/)?.[0] ?? '0');
+    if (arcB !== arcA) return arcB - arcA;
+    return b.order - a.order;
+  })[0];
+}
+
 export function getActiveArc(completedMissions: string[]): RPGArc {
   if (completedMissions.includes('mission-3-7')) return COMPLETION;
   if (completedMissions.includes('mission-2-11')) return ARC3;

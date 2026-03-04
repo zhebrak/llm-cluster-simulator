@@ -20,9 +20,9 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       'reduced-precision arithmetic — dramatically faster than CUDA cores. Find the right setting.',
     concept: 'Unlocking Tensor Core throughput with mixed precision',
     learningObjectives: [
-      'Understand that FP32 runs on slow CUDA cores while BF16 activates Tensor Cores for 16x throughput',
-      'Know that MFU measures useful compute as a fraction of GPU peak TFLOPS',
-      'Recognize that small models underutilize large GPUs (low MFU even at high throughput)',
+      'Understand that `FP32` runs on slow CUDA cores while `BF16` activates Tensor Cores for 16x throughput',
+      'Know that `MFU` measures useful compute as a fraction of GPU peak `TFLOPS`',
+      'Recognize that small models underutilize large GPUs (low `MFU` even at high throughput)',
     ],
     setup: {
       modelId: 'gpt3-125m',
@@ -51,11 +51,11 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     hints: [
       'Run the simulation first at `FP32` and observe the throughput — it will be far below 50k tok/s. The GPU is running on slow CUDA cores.',
       'The A100 has Tensor Cores that accelerate reduced-precision matrix multiplications. Look for the Precision setting in the sidebar.',
-      'Switch precision from `FP32` to {{bf16|BF16}}. Tensor Cores process `BF16` at 312 {{tflops|TFLOPS}} vs 19.5 `TFLOPS` for `FP32` — a 16× increase in peak throughput.',
+      'Switch precision from `FP32` to {{bf16|BF16}}. Tensor Cores process reduced-precision math at over an order of magnitude more throughput than `FP32` CUDA cores — the difference is dramatic.',
     ],
     successExplanation:
-      `Switching to reduced precision (for example, \`BF16\` or \`FP16\`) unlocked the A100's Tensor Cores, jumping from ~12k to ~154k tok/s. ` +
-      `A 125M parameter model in \`FP32\` uses about 2.25 GB total (18 bytes/param for weights, gradients, and optimizer states), ` +
+      `Switching to {{mixed-precision|mixed precision}} (for example, \`BF16\` or \`FP16\`) unlocked the A100's Tensor Cores — throughput increases dramatically. ` +
+      `Even at \`BF16\`, a 125M parameter model uses only about 2.25 GB of model state (18 bytes/param for weights, gradients, and optimizer states), ` +
       `leaving plenty of headroom on an 80 GB GPU — the issue was never memory, but compute throughput.\n\n` +
       `The {{mfu|MFU}} you see tells you what fraction ` +
       `of the GPU's theoretical peak compute is being used for useful work. For a small model on a single GPU, \`MFU\` ` +
@@ -63,31 +63,100 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       `As models grow larger, we'll see \`MFU\` improve, but new challenges will emerge.`,
   },
 
-  // ── Task 2: Activation Memory ───────────────────────────────────────
+  // ── Task 3: Sequence Length and Memory ─────────────────────────────
   {
     id: 'training-beginner-03',
     mode: 'training',
     difficulty: 'beginner',
     order: 1,
+    title: 'Sequence Length and Memory',
+    briefing:
+      'Gemma 3 4B in `BF16` fits on a single A100-80GB at standard sequence lengths — model state ' +
+      'is about 72 GB (4B × 18 bytes for parameters, {{gradients}}, and {{optimizer-states|optimizer ' +
+      'states}}), leaving some headroom for {{activation-memory|activations}}.\n\n' +
+      'But the current config uses a much longer sequence length. Each transformer layer stores ' +
+      'intermediate tensors proportional to `sequence_length × hidden_dim` during the ' +
+      '{{forward-pass|forward pass}} — these are needed for the backward pass to compute gradients. ' +
+      'At longer sequences, this activation memory grows linearly.\n\n' +
+      'Run the simulation — you\'ll hit `OOM`. The model state hasn\'t changed, but activation memory ' +
+      'grew with sequence length. Your goal: make training fit in memory without changing the model ' +
+      'or GPU.',
+    concept: 'How sequence length drives activation memory',
+    learningObjectives: [
+      'Understand that activation memory scales linearly with sequence length (each layer stores intermediates proportional to `seqLen × hidden_dim`)',
+      'Know that reducing sequence length proportionally shrinks per-layer activation memory',
+      'Recognize that long-context training (32K, 128K) requires specialized techniques to manage activation memory',
+    ],
+    setup: {
+      modelId: 'gemma3-4b',
+      gpuId: 'a100-80gb',
+      numGPUs: 1,
+      strategyType: 'ddp',
+      mixedPrecision: 'bf16',
+      flashAttention: true,
+      sequenceLength: 8192,
+    },
+    winningCriteria: [
+      {
+        field: 'success',
+        operator: '==',
+        value: true,
+        label: 'Training runs successfully',
+      },
+      {
+        field: 'mfu',
+        operator: '>',
+        value: 0.50,
+        label: 'MFU > 50%',
+      },
+    ],
+    expectedChanges: [
+      { field: 'sequenceLength', check: 'decreased', label: 'Reduced sequence length' },
+      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
+    ],
+    hints: [
+      'Activation memory grows linearly with sequence length — each layer stores intermediates proportional to `seqLen × hidden_dim` for the backward pass. Look for the Sequence Length setting in the sidebar.',
+      'Reduce the sequence length. At shorter contexts, each layer\'s activation footprint shrinks proportionally. Later tasks will teach techniques (Flash Attention, Context Parallelism) that enable longer sequences without this tradeoff.',
+    ],
+    successExplanation:
+      'Activation memory is proportional to sequence length: each transformer layer stores ' +
+      'intermediate tensors of shape `seqLen × hidden_dim` (and attention-related tensors that ' +
+      'scale even faster without Flash Attention). Doubling the sequence length roughly doubles ' +
+      'the per-layer activation memory.\n\n' +
+      'This is why long-context training (32K, 128K tokens) requires specialized techniques: ' +
+      'activation checkpointing (recompute instead of store), Flash Attention (eliminate quadratic ' +
+      'attention memory), and Context Parallelism (split the sequence across GPUs). You\'ll encounter ' +
+      'all of these in later tasks.\n\n' +
+      'The key takeaway: training memory has two independent dimensions — model state (fixed by model ' +
+      'size and precision) and activation memory (scales with sequence length AND micro-batch size). ' +
+      'Understanding both is essential for sizing GPU clusters.',
+  },
+
+  // ── Task 2: Activation Memory ───────────────────────────────────────
+  {
+    id: 'training-beginner-02',
+    mode: 'training',
+    difficulty: 'beginner',
+    order: 2,
     title: 'Activation Memory',
     briefing:
       'GPT-3 1.3B fits comfortably on a single A100-80GB in `BF16` — the model state is only about 23 GB. ' +
-      'But look at the current setup: {{gbs|Global Batch Size}} (GBS) is 64, and the {{mbs|Micro-Batch Size}} (MBS) is also 64. ' +
+      'But look at the current setup: {{gbs|Global Batch Size}} (`GBS`) is 64, and the {{mbs|Micro-Batch Size}} (`MBS`) is also 64. ' +
       'That means the GPU tries to run all 64 sequences through the forward pass at once, storing intermediate ' +
-      'tensors ({{activation-memory|activations}}) for every sequence simultaneously.\n\n' +
+      'tensors (activations) for every sequence simultaneously.\n\n' +
       'Run the simulation — you\'ll hit {{oom|OOM}}. The model weights are fine, but 64 sequences worth of activations ' +
       'is far more than the remaining memory can hold.\n\n' +
-      'The fix: {{gradient-accumulation|Gradient Accumulation}} (GA). Instead of processing all 64 sequences in ' +
-      'one giant forward pass, GA breaks the batch into smaller chunks. The GPU runs multiple ' +
+      'The fix: {{gradient-accumulation|Gradient Accumulation}} (`GA`). Instead of processing all 64 sequences in ' +
+      'one giant forward pass, `GA` breaks the batch into smaller chunks. The GPU runs multiple ' +
       'forward/backward passes, accumulating gradients, then updates the optimizer once. The formula is ' +
       '`GA = GBS / MBS`. The training result is mathematically identical — same gradients, same ' +
       'convergence — but peak memory drops dramatically.\n\n' +
-      'Your goal: keep GBS at 64 and make the training fit in memory.',
+      'Your goal: keep `GBS` at 64 and make the training fit in memory.',
     concept: 'Forward pass memory growth',
     learningObjectives: [
       'Understand that activation memory scales linearly with micro-batch size (each sequence stores layer intermediates for backprop)',
-      'Know the gradient accumulation formula: GA = GBS / MBS',
-      'Recognize that GA produces identical gradients to processing the full batch at once',
+      'Know the gradient accumulation formula: `GA` = `GBS` / `MBS`',
+      'Recognize that `GA` produces identical gradients to processing the full batch at once',
     ],
     setup: {
       modelId: 'gpt3-1.3b',
@@ -119,82 +188,20 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       { field: 'globalBatchSize', check: 'unchanged', label: 'Kept GBS constant' },
     ],
     hints: [
-      'Look at the memory breakdown — model weights are a small fraction of total memory. Where is the rest going? Think about what happens during a forward pass when MBS is large.',
+      'Look at the memory breakdown — model weights are a small fraction of total memory. Where is the rest going? Think about what happens during a forward pass when `MBS` is large.',
       'Activation memory scales with how many sequences the GPU processes simultaneously. Which setting controls that? Changing it won\'t affect the total batch — another mechanism compensates automatically.',
       'Reduce the Micro-Batch Size. Gradient accumulation steps increase as you lower `MBS` (`GA = GBS / MBS`), preserving the same effective batch size with less memory per forward pass.',
     ],
     successExplanation:
       `Gradient accumulation is how real training runs achieve massive batch sizes without running out of memory. ` +
       `The GPU processes \`MBS\` sequences at a time, computes gradients, and accumulates them over \`GA\` steps before ` +
-      `a single optimizer update. The result is mathematically identical to processing the full GBS at once.\n\n` +
-      `The key formula: \`GA = GBS / MBS\`. By reducing MBS while keeping GBS fixed, GA increases automatically. ` +
+      `a single optimizer update. The result is mathematically identical to processing the full \`GBS\` at once.\n\n` +
+      `The key formula: \`GA = GBS / MBS\`. By reducing \`MBS\` while keeping \`GBS\` fixed, \`GA\` increases automatically. ` +
       `For example, with \`GBS=64\` and \`MBS=4\`, \`GA=16\` — sixteen forward/backward passes, ` +
       `each holding activations for just 4 sequences instead of 64.\n\n` +
-      `In practice, MBS is tuned to the largest value that fits in GPU memory, while GBS is set based on training ` +
-      `convergence requirements. GA bridges them automatically. When you scale to multiple GPUs later, the work ` +
+      `In practice, \`MBS\` is tuned to the largest value that fits in GPU memory, while \`GBS\` is set based on training ` +
+      `convergence requirements. \`GA\` bridges them automatically. When you scale to multiple GPUs later, the work ` +
       `is split across devices and the formula expands to \`GA = GBS / (MBS × DP)\`.`,
-  },
-
-  // ── Task 3: Understanding GPU Memory ─────────────────────────────────
-  {
-    id: 'training-beginner-02',
-    mode: 'training',
-    difficulty: 'beginner',
-    order: 2,
-    title: 'Understanding GPU Memory',
-    briefing:
-      `Gemma 3 4B has about 4 billion parameters. ` +
-      `You have a single A100-80GB GPU.\n\n` +
-      `Try running the simulation. You'll hit an Out of Memory (\`OOM\`) error. Training a model requires far more ` +
-      `memory than just the weights: you need space for {{gradients}}, {{optimizer-states|optimizer states}} (like Adam's momentum and variance), ` +
-      `and {{activation-memory|activation memory}} from the {{forward-pass|forward pass}}.\n\n` +
-      `In \`FP32\` (32-bit floating point), the model state alone takes about 16 bytes per parameter — ` +
-      `64 GB for 4B parameters. Add activation memory and you exceed the 80 GB GPU.\n\n` +
-      `Your task: change one setting to make this model fit in memory.`,
-    concept: 'GPU memory breakdown and precision formats',
-    learningObjectives: [
-      'Identify training memory components: parameters, gradients, optimizer states (16 bytes/param in FP32), and activations',
-      'Recognize OOM as the signal that total memory exceeds GPU capacity',
-      'Use BF16 mixed precision to reduce memory while unlocking Tensor Core compute',
-    ],
-    setup: {
-      modelId: 'gemma3-4b',
-      gpuId: 'a100-80gb',
-      numGPUs: 1,
-      strategyType: 'ddp',
-      flashAttention: true,
-    },
-    winningCriteria: [
-      {
-        field: 'memoryUtilization',
-        operator: '<',
-        value: 1.0,
-        label: 'No OOM',
-      },
-      {
-        field: 'success',
-        operator: '==',
-        value: true,
-        label: 'Training runs successfully',
-      },
-    ],
-    expectedChanges: [
-      { field: 'precision', check: 'changed', label: 'Changed precision from FP32' },
-      { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
-    ],
-    hints: [
-      'Look at how much memory each component uses. The optimizer states alone in `FP32` take 8 bytes per parameter. Can you use a smaller number format?',
-      'Modern GPUs like the A100 have hardware support for `BF16` (bfloat16), which uses 2 bytes instead of 4 per value. Check the Precision setting.',
-      'Switch the training precision from `FP32` to `BF16`. This halves the memory for parameters and gradients, and the optimizer uses mixed precision as well.',
-    ],
-    successExplanation:
-      `\`BF16\` {{mixed-precision|mixed precision}} stores parameters in 2 bytes instead of 4, and activations are ` +
-      `also stored in \`BF16\` during the forward pass, halving activation memory. While the ` +
-      `optimizer states actually use 12 bytes per parameter in \`BF16\` mode (\`FP32\` master weights + ` +
-      `momentum + variance), the activation savings are enough to bring the total under 80 GB.\n\n` +
-      `Combined with the 16x compute speedup from Tensor Cores, \`BF16\` is strictly better for ` +
-      `training on modern GPUs. \`BF16\` has the same exponent range as \`FP32\` (unlike {{fp16|FP16}}), ` +
-      `making it robust for training without loss scaling. Nearly all modern LLM training uses \`BF16\` or \`FP8\`.`,
   },
 
   // ── Task 4: Activation Checkpointing ─────────────────────────────────
@@ -219,7 +226,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       'Understand that activation memory scales linearly with layer count and is needed for backprop',
       'Know AC discards activations in forward pass and recomputes them in backward pass',
       'Understand the compute cost: backward multiplier increases from 2x to ~2.5-2.85x',
-      'Distinguish MFU (useful work only) from HFU (includes recompute overhead)',
+      'Distinguish `MFU` (useful work only) from `HFU` (includes recompute overhead)',
     ],
     setup: {
       modelId: 'gemma3-4b',
@@ -253,7 +260,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     ],
     successExplanation:
       `Activation checkpointing is one of the most important memory optimization techniques in deep learning. ` +
-      `Without it, activation memory scales linearly with the number of layers — for a 40-layer 13B model, ` +
+      `Without it, activation memory scales linearly with the number of layers — for a model with many layers, ` +
       `that's a lot of saved tensors. With full checkpointing, you recompute activations layer by layer during ` +
       `backprop, reducing peak activation memory dramatically.\n\n` +
       `The cost is extra compute: the backward pass takes roughly 2.5-2.85x the forward pass time instead of 2x. ` +
@@ -286,9 +293,9 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       `Your goal: get memory utilization below 85%.`,
     concept: 'Quadratic attention and tiled computation',
     learningObjectives: [
-      'Understand standard attention materializes `O(N²)` attention score matrix in HBM',
-      'Know Flash Attention tiles computation in SRAM, achieving `O(N)` memory',
-      'Recognize FA also improves speed 2-4x via better memory access patterns',
+      'Understand standard attention materializes `O(N²)` attention score matrix in `HBM`',
+      'Know Flash Attention tiles computation in `SRAM`, achieving `O(N)` memory',
+      'Recognize `FA` also improves speed 2-4x via better memory access patterns',
     ],
     setup: {
       modelId: 'gemma3-4b',
@@ -328,7 +335,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       `The throughput benefit depends on sequence length — at shorter sequences the attention \`HBM\` traffic is a small ` +
       `fraction of total time, but at longer sequences (8K+) it grows quadratically and becomes the dominant bottleneck ` +
       `without Flash Attention. The memory savings (\`O(N²)\` → \`O(N)\` activation memory) can be the difference between fitting and \`OOM\` ` +
-      `at long contexts. There is no reason to leave FA off on supported hardware.`,
+      `at long contexts. There is no reason to leave \`FA\` off on supported hardware.`,
   },
 
   // ── Task 6: Scaling to Multiple GPUs ─────────────────────────────────
@@ -349,9 +356,9 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       `Your goal: achieve at least 100k tokens per second. You currently have a single GPU.`,
     concept: 'Multi-GPU gradient synchronization',
     learningObjectives: [
-      'Understand DDP: each GPU holds full model copy, processes different data, syncs gradients via AllReduce',
-      'Know fast intra-node interconnects (NVLink, Infinity Fabric) enable near-linear DDP scaling within a node',
-      'Observe near-linear throughput scaling with DDP on fast intra-node interconnects',
+      'Understand `DDP`: each GPU holds full model copy, processes different data, syncs gradients via `AllReduce`',
+      'Know fast intra-node interconnects (`NVLink`, Infinity Fabric) enable near-linear `DDP` scaling within a node',
+      'Observe near-linear throughput scaling with `DDP` on fast intra-node interconnects',
     ],
     setup: {
       modelId: 'gpt3-1.3b',
@@ -383,7 +390,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     ],
     hints: [
       'A single GPU cannot reach 100k tok/s. Scale up the number of GPUs to add more data-parallel workers.',
-      '{{nvlink|NVLink}} provides high bandwidth between GPUs in the same node (600 GB/s bidirectional on A100), making `AllReduce` gradient sync very fast. `DDP` throughput scales nearly linearly within a node.',
+      'The fast intra-node GPU interconnect provides high bandwidth between GPUs in the same node, making `AllReduce` gradient sync very fast. `DDP` throughput scales nearly linearly within a node.',
     ],
     successExplanation:
       `\`DDP\` is the foundation of distributed training. Within a single 8-GPU node connected by \`NVLink\`, ` +
@@ -409,7 +416,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       'of the model and processed different data. That works when the model fits on one GPU.\n\n' +
       'Qwen 3 14B has about 14 billion parameters. With `BF16` training and `AdamW`, each GPU needs to ' +
       'store parameters (2 bytes), gradients (4 bytes), and optimizer states (12 bytes) — that\'s ' +
-      '18 bytes per parameter. For 14B parameters: `14B × 18 = 252 GB`. An A100 has 80 GB. `DDP` ' +
+      '18 bytes per parameter. For 14B parameters: `14B × 18 = 252 GB`. An A100 has 80 GB. ' +
       '`DDP` replicates all of this on every GPU, so adding more GPUs doesn\'t help with memory.\n\n' +
       'Fully Sharded Data Parallel ({{fsdp|FSDP}}) fixes this. Instead of replicating everything, `FSDP` ' +
       '{{sharding|shards}} the parameters, gradients, and optimizer states across all GPUs. Each GPU stores ' +
@@ -419,10 +426,10 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       'Your task: make this model fit in memory and train successfully.',
     concept: 'Sharding model state across GPUs',
     learningObjectives: [
-      'Understand that DDP replicates full model state (18 bytes/param for BF16 + AdamW) on every GPU',
-      'Know that FSDP shards parameters, gradients, and optimizer states across GPUs (equivalent to ZeRO-3)',
-      'Understand the AllGather (before forward) and ReduceScatter (after backward) communication pattern',
-      'Compare DDP memory (18 bytes/param replicated) vs FSDP memory (18/N bytes/param sharded)',
+      'Understand that `DDP` replicates full model state (18 bytes/param for `BF16` + AdamW) on every GPU',
+      'Know that `FSDP` shards parameters, gradients, and optimizer states across GPUs (equivalent to `ZeRO-3`)',
+      'Understand the `AllGather` (before forward) and `ReduceScatter` (after backward) communication pattern',
+      'Compare `DDP` memory (18 bytes/param replicated) vs `FSDP` memory (18/N bytes/param sharded)',
     ],
     setup: {
       modelId: 'qwen3-14b',
@@ -455,7 +462,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     ],
     hints: [
       'Run `DDP` first to confirm it OOMs. Then look at the strategy selector — there is a strategy that shards all model state across GPUs instead of replicating it.',
-      'Switch the strategy from `DDP` to `FSDP`. `FSDP` (equivalent to DeepSpeed ZeRO Stage 3) shards parameters, gradients, and optimizer states across all GPUs, reducing per-GPU memory by the sharding factor.',
+      '`DDP` replicates everything. Look at the strategy selector — is there an approach that distributes model state across GPUs instead of copying it?',
     ],
     successExplanation:
       `\`FSDP\` is one of the most important innovations in distributed training. It implements the same idea as ` +
@@ -481,16 +488,16 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       'Activation memory — the intermediate values stored during the forward pass for backpropagation — ' +
       'still lives entirely on each GPU.\n\n' +
       'LLaMA 3.1 8B is on 8 GPUs with `FSDP` and no {{activation-checkpointing|activation checkpointing}} — the GPU stores all ' +
-      'intermediate activations for the {{backward-pass|backward pass}}. `MBS` is set to 4: each GPU processes 4 sequences ' +
+      'intermediate activations for the backward pass. `MBS` is set to 4: each GPU processes 4 sequences ' +
       'in a single forward pass, storing activations for all 4 simultaneously.\n\n' +
       'The problem: 4 sequences of activations at seqLen=4096 far exceeds GPU memory alongside the sharded model state. ' +
       '\n\nYour goal: fit in memory and achieve `MFU` above 50%.',
     concept: 'Micro-batch size as a memory control knob',
     learningObjectives: [
-      'Understand that activation memory scales linearly with MBS — each sequence stores layer intermediates for backprop',
-      'Know GA = GBS / (MBS × DP): reducing MBS increases GA, keeping GBS and gradient quality constant',
-      'Recognize that FSDP shards model state but not activations — MBS is the lever for activation memory',
-      'Know that GPT-3 used GBS=3.2M tokens with small MBS and high GA + DP',
+      'Understand that activation memory scales linearly with `MBS` — each sequence stores layer intermediates for backprop',
+      'Know `GA` = `GBS` / (`MBS` × `DP`): reducing `MBS` increases `GA`, keeping `GBS` and gradient quality constant',
+      'Recognize that `FSDP` shards model state but not activations — `MBS` is the lever for activation memory',
+      'Know that GPT-3 used `GBS`=3.2M tokens with small `MBS` and high `GA` + `DP`',
     ],
     setup: {
       modelId: 'llama3.1-8b',
@@ -530,20 +537,20 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
     ],
     hints: [
-      'Activation memory scales linearly with MBS — the GPU stores intermediate activations for all sequences in the micro-batch simultaneously. The current MBS is too large to fit alongside `FSDP` model state.',
+      'Activation memory scales linearly with `MBS` — the GPU stores intermediate activations for all sequences in the micro-batch simultaneously. The current `MBS` is too large to fit alongside `FSDP` model state.',
       'Reduce `MBS` and let `GA` adjust. Gradient accumulation scales inversely with `MBS` — reducing `MBS` lets `GA` rise automatically to preserve the same effective batch size.',
-      'MBS barely affects `MFU` at this scale — it is purely a memory knob. Use the smallest MBS that fits, and GA fills the gap automatically.',
+      '`MBS` barely affects `MFU` at this scale — it is purely a memory knob. Use the smallest `MBS` that fits, and `GA` fills the gap automatically.',
     ],
     successExplanation:
       `\`MBS\` controls per-GPU memory: activation memory scales linearly with micro-batch size because each ` +
       `sequence in the micro-batch stores its own intermediate tensors for the backward pass. Without ` +
       `activation checkpointing, all layer activations are retained — at \`MBS=4\`, that's 4× the activation ` +
       `memory of \`MBS=1\`.\n\n` +
-      `The formula \`GBS = MBS × GA × DP\` means reducing MBS automatically increases GA, preserving the ` +
+      `The formula \`GBS = MBS × GA × DP\` means reducing \`MBS\` automatically increases \`GA\`, preserving the ` +
       `effective batch size. For example, \`MBS=2\` with \`GBS=64\` and \`DP=8\` gives \`GA=4\`, fitting comfortably ` +
       `in memory while maintaining high \`MFU\`.\n\n` +
       `In practice, tune \`MBS\` to the largest value that fits in GPU memory — more samples per forward pass ` +
-      `means better hardware utilization. Then GA fills the gap to reach the desired GBS. Activation ` +
+      `means better hardware utilization. Then \`GA\` fills the gap to reach the desired \`GBS\`. Activation ` +
       `checkpointing (from task 4) is the other lever for memory, but it adds recomputation overhead ` +
       `that would drop \`MFU\` below the target here.`,
   },
@@ -566,13 +573,13 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       'for the inter-node portion of the sharded parameters.\n\n' +
       'Your task: scale beyond one node to exceed 40,000 tokens per second. ' +
       'Remember to adjust your Global Batch Size — ' +
-      'each GPU processes at least one micro-batch per step, so `GBS` should be at least `MBS` × DP.\n\n' +
+      'each GPU processes at least one micro-batch per step, so `GBS` should be at least `MBS` × `DP`.\n\n' +
       'Your goal: throughput above 40,000 tokens per second.',
-    concept: 'Multi-node training and inter-node communication',
+    concept: 'Crossing the node boundary',
     learningObjectives: [
-      'Understand that intra-node interconnects (e.g. NVLink) are much faster than inter-node fabrics (e.g. InfiniBand)',
-      'Know that FSDP AllGather/ReduceScatter must cross the inter-node link when spanning nodes',
-      'Recognize that GBS must be at least MBS × DP for all GPUs to contribute useful work',
+      'Understand that intra-node interconnects (e.g. `NVLink`) are much faster than inter-node fabrics (e.g. InfiniBand)',
+      'Know that `FSDP` `AllGather`/`ReduceScatter` must cross the inter-node link when spanning nodes',
+      'Recognize that `GBS` must be at least `MBS` × `DP` for all GPUs to contribute useful work',
       'Observe that throughput scales with more GPUs, but efficiency per GPU decreases slightly at multi-node scale',
     ],
     setup: {
@@ -611,16 +618,16 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     successExplanation:
       'Scaling beyond a single node increased throughput substantially, though ' +
       '`MFU` dropped slightly. Here\'s why:\n\n' +
-      'Within each node, GPUs communicate via a fast intra-node interconnect (e.g. `NVLink` at ~600 GB/s). ' +
-      'Between nodes, they use a network fabric like `InfiniBand` (~200 GB/s for HDR). The inter-node ' +
-      'link is typically several times slower. `FSDP`\'s `AllGather` and `ReduceScatter` collectives ' +
+      'Within each node, GPUs communicate via a fast intra-node interconnect. ' +
+      'Between nodes, they use a network fabric that provides several times less bandwidth per GPU. The inter-node ' +
+      'link is the bottleneck. `FSDP`\'s `AllGather` and `ReduceScatter` collectives ' +
       'must traverse this slower link for the inter-node portion.\n\n' +
       'However, `FSDP`\'s per-layer pipelining is remarkably effective at hiding communication: ' +
       '`AllGather`(layer N) overlaps with compute(layer N-1). For compute-bound models like LLaMA 8B, ' +
       'per-layer compute far exceeds per-layer communication, so the multi-node overhead is modest — ' +
       'typically 2-5% `MFU` loss.\n\n' +
       'The key rule for scaling: `GBS ≥ MBS × DP`. Each GPU must process at least one micro-batch ' +
-      'per step. If GBS is smaller than the number of GPUs, the effective batch is rounded up, ' +
+      'per step. If `GBS` is smaller than the number of GPUs, the effective batch is rounded up, ' +
       'and some compute does not contribute to gradient quality — wasting efficiency.\n\n' +
       'In the intermediate track, you\'ll learn tensor parallelism and pipeline parallelism — ' +
       'techniques that split the model itself across GPUs, enabling training of 70B+ parameter models ' +
@@ -637,19 +644,18 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
     briefing:
       `You've learned the fundamentals: precision, activation checkpointing, Flash Attention, batch sizing, ` +
       `\`DDP\`, and \`FSDP\`. Now put it all together.\n\n` +
-      `You have 8 NVIDIA {{h100|H100}} SXM GPUs — the current standard for AI training. Each \`H100\` delivers 989 \`BF16\` \`TFLOPS\` ` +
-      `(over 3x the A100) and the \`NVLink\` 4.0 interconnect provides 900 GB/s of bandwidth.\n\n` +
-      `Your mission: train LLaMA 3.1 8B with \`FSDP\` on these 8 \`H100\`s and achieve \`MFU\` above 50%. Published benchmarks ` +
+      `You have 8 NVIDIA {{h100|H100}} SXM GPUs — the current standard for AI training. Each \`H100\` delivers significantly more \`BF16\` \`TFLOPS\` ` +
+      `than the A100 (over 3x) and the intra-node interconnect provides high bandwidth for communication.\n\n` +
+      `Your mission: keeping \`BF16\` precision and \`FSDP\`, achieve \`MFU\` above 50% on these 8 \`H100\`s. Published benchmarks ` +
       `for 8B models on \`H100\` clusters report \`MFU\` in the 50-57% range.\n\n` +
-      `Here's a twist: \`FSDP\` shards model state so efficiently across 8 GPUs that you may have more memory ` +
-      `headroom than you think. Every optimization has a cost — even activation checkpointing adds recomputation ` +
-      `overhead that shows up as lower \`MFU\` (the recompute is not "useful work"). For maximum efficiency, use only ` +
-      `every optimization is helping or hurting in this configuration.`,
+      `Not every optimization helps in every scenario — some add overhead that outweighs their benefit when ` +
+      `resources are plentiful. And some optimizations you disabled earlier might be worth revisiting. ` +
+      `Review what's enabled and what isn't.`,
     concept: 'Combining techniques for production-grade efficiency',
     learningObjectives: [
       'Recognize that not every optimization is always beneficial — AC hurts when memory is unconstrained',
-      'Combine BF16, FA, FSDP, and batch sizing for production-grade 50%+ MFU',
-      'Understand that MFU directly determines training time and cost for a fixed token budget',
+      'Combine `BF16`, `FA`, `FSDP`, and batch sizing for production-grade 50%+ `MFU`',
+      'Understand that `MFU` directly determines training time and cost for a fixed token budget',
     ],
     setup: {
       modelId: 'llama3.1-8b',
@@ -658,7 +664,7 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       gpusPerNode: 8,
       strategyType: 'fsdp',
       mixedPrecision: 'bf16',
-      flashAttention: true,
+      flashAttention: false,
       activationCheckpointing: true,
     },
     winningCriteria: [
@@ -676,14 +682,14 @@ export const TRAINING_BEGINNER_TASKS: GameTask[] = [
       },
     ],
     expectedChanges: [
-      { field: 'activationCheckpointing', check: 'disabled', label: 'Disabled activation checkpointing' },
       { field: 'modelId', check: 'unchanged', label: 'Did not change model' },
       { field: 'gpuId', check: 'unchanged', label: 'Did not change GPU type' },
+      { field: 'precision', check: 'unchanged', label: 'Did not change precision' },
     ],
     hints: [
-      '`MFU` is held back by the backward pass recomputing activations (extra compute that does not count as useful work in `MFU`).',
-      '`FSDP` shards the model state across all GPUs — per-GPU model state is tiny compared to GPU capacity. You have plenty of memory headroom. Do you really need activation checkpointing?',
-      'Disable activation checkpointing — the 8B model fits comfortably with `FSDP` across 8 GPUs. Without the recomputation overhead, `MFU` improves significantly. Try increasing MBS for better utilization.',
+      'Run the simulation and look at the current `MFU`. Two things are holding it back — one is adding unnecessary overhead, and another useful optimization is turned off.',
+      'Without Flash Attention, the attention computation is slower and uses more memory. And `FSDP` shards the 8B model so efficiently across 8 GPUs that per-GPU memory is tiny — does activation checkpointing actually help here?',
+      'Enable Flash Attention for faster, memory-efficient attention. Disable activation checkpointing — the 8B model fits comfortably with `FSDP` across 8 GPUs, and the recomputation overhead only hurts `MFU`.',
     ],
     successExplanation:
       `Congratulations — you've completed the beginner track! You achieved over 50% \`MFU\` by recognizing ` +

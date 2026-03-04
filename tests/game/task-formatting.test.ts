@@ -259,6 +259,34 @@ describe('Task formatting lint', () => {
         }
       });
 
+      it('should not have duplicate glossary annotations within the tier', () => {
+        const glossaryPattern = /\{\{([a-z0-9-]+)(?:\|[^}]*)?\}\}/g;
+        const seen = new Map<string, number>(); // termId → first line number
+        const duplicates: string[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+          let match;
+          glossaryPattern.lastIndex = 0;
+          while ((match = glossaryPattern.exec(lines[i])) !== null) {
+            const termId = match[1];
+            if (seen.has(termId)) {
+              duplicates.push(
+                `Line ${i + 1}: duplicate {{${termId}}} (first at line ${seen.get(termId)})`,
+              );
+            } else {
+              seen.set(termId, i + 1);
+            }
+          }
+        }
+
+        if (duplicates.length > 0) {
+          expect.fail(
+            `Found ${duplicates.length} duplicate glossary annotation(s):\n` +
+            duplicates.join('\n'),
+          );
+        }
+      });
+
       it('should backtick config assignments (VAR=N) in prose content', () => {
         // Config abbreviations that should be backticked when used as VAR=N
         const CONFIG_PATTERN =

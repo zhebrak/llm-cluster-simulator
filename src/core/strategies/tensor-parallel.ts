@@ -318,6 +318,8 @@ export class TensorParallelStrategy extends ParallelismStrategy {
     // TP comm is per-microbatch: all-reduces happen layer-by-layer within each
     // microbatch's forward/backward, pipelined with compute. Overlap efficiency
     // depends on compute-to-comm ratio (large models → high overlap).
+    // TODO: See 3d-parallel.ts TP overlap TODO — same RS/AG decomposition simplification
+    // applies here. Impact <0.2pp MFU for all practical configs.
     const computePerMB = forwardTime + backwardTime;
     const tpOverlapEff = computeTPOverlap({
       computePerMB,

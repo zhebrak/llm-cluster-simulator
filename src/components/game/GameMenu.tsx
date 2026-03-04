@@ -7,20 +7,21 @@ import { useGameStore } from '../../stores/game.ts';
 import { getTasksForLevel, isTaskUnlocked } from '../../game/tasks/index.ts';
 import { MODE_LABELS, DIFFICULTY_LABELS } from '../../game/constants.ts';
 import type { GameMode, GameDifficulty } from '../../game/types.ts';
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
 
 const MODES: GameMode[] = ['training', 'inference'];
 const DIFFICULTIES: GameDifficulty[] = ['beginner', 'intermediate', 'advanced'];
 
 const DIFFICULTY_DESCRIPTIONS: Record<GameMode, Record<GameDifficulty, string>> = {
   training: {
-    beginner: 'Memory, precision, and scaling to multi-node clusters',
-    intermediate: 'Tensor, pipeline, and sequence parallelism in depth',
-    advanced: 'Real-world configs, fine-tuning, and full-scale optimization',
+    beginner: 'Memory, precision, scaling to multi-node clusters',
+    intermediate: 'Tensor, pipeline, sequence parallelism, MoE',
+    advanced: 'Production configs, fine-tuning, optimization',
   },
   inference: {
-    beginner: 'Weight memory, KV cache, and latency-throughput tradeoffs',
-    intermediate: 'Multi-GPU serving, GPU selection, and speculative decoding',
-    advanced: 'Production MoE serving, latency SLAs, and cost optimization',
+    beginner: 'Memory, bandwidth, batching, continuous serving',
+    intermediate: 'Multi-GPU serving, speculative decoding',
+    advanced: 'MoE at scale, long context, SLAs, cost optimization',
   },
 };
 
@@ -183,7 +184,7 @@ export function GameMenu() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleBackdropClick}>
+    <ModalBackdrop backdropClass="bg-black/50" onBackdropClick={handleBackdropClick}>
       <div
         className="bg-gray-900 border border-gray-700 rounded-xl p-4 sm:p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
@@ -227,6 +228,6 @@ export function GameMenu() {
           </div>
         )}
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

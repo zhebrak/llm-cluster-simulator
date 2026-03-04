@@ -29,7 +29,7 @@ const mockTrainingMetrics: SimulationMetrics = {
   // Optional fields that may appear
   timeToTrainHours: 0, totalCost: 0, modelFlopsMfu: 0, fp8HwUtil: 0, resolvedStoredLayers: 0,
 };
-const MOCK_TRAINING_CONTEXT = { success: true, ...mockTrainingMetrics };
+const MOCK_TRAINING_CONTEXT = { success: true, gpuId: 'mock-gpu', ...mockTrainingMetrics };
 
 // Build a mock inference context
 const mockInferenceResult: InferenceSimulationResult = {

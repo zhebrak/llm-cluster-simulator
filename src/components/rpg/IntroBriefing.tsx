@@ -8,6 +8,7 @@ import { Terminal } from 'lucide-react';
 import { useRPGStore } from '../../stores/rpg.ts';
 import { useTheme } from '../../hooks/useTheme.ts';
 import { getActiveArc } from '../../rpg/missions/index.ts';
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
 
 export function IntroBriefing() {
   const dismissIntro = useRPGStore(s => s.dismissIntro);
@@ -25,7 +26,7 @@ export function IntroBriefing() {
   const paragraphs = arc.briefing?.split('\n\n') ?? [];
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+    <ModalBackdrop backdropClass="bg-black/80">
       <div
         className="bg-gray-950 border border-amber-500/30 rounded-xl max-w-lg w-full mx-4"
         onClick={e => e.stopPropagation()}
@@ -89,6 +90,6 @@ export function IntroBriefing() {
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

@@ -51,7 +51,7 @@ export interface TaskSetup {
 export interface WinningCriterion {
   field: string;          // Dot-path: 'mfu', 'memoryUtilization', 'latency.ttft'
   operator: '>' | '>=' | '<' | '<=' | '==' | '!=';
-  value: number | boolean;
+  value: number | boolean | string;
   label: string;          // Human-readable: "MFU > 30%"
 }
 

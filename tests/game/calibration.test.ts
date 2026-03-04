@@ -11,181 +11,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  SimulationEngine,
-  type SimulationConfig,
-} from '../../src/core/simulation/engine.ts';
-import {
-  runInferenceSimulation,
-  type InferenceSimulationConfig,
-} from '../../src/core/inference/simulation.ts';
-import {
-  createMultiNodeCluster,
-  createSingleNodeCluster,
-} from '../../src/core/hardware/index.ts';
 import { ALL_TASKS, getTaskById } from '../../src/game/tasks/index.ts';
-import { evaluateCriterion } from '../../src/game/validation.ts';
-import { calculateCostPerMillionTokens, getGPUHourlyRate } from '../../src/core/cost/cloud.ts';
-import { TRAINING_DEFAULTS, INFERENCE_DEFAULTS } from '../../src/game/defaults.ts';
-import type { GameTask, WinningCriterion, TaskSetup } from '../../src/game/types.ts';
-
-// ── Helpers ────────────────────────────────────────────────────────────
-
-function makeCluster(gpuId: string, numGPUs: number, gpusPerNode: number) {
-  const numNodes = Math.ceil(numGPUs / gpusPerNode);
-  if (numNodes === 1) return createSingleNodeCluster(gpuId, numGPUs);
-  return createMultiNodeCluster(gpuId, gpusPerNode, numNodes);
-}
-
-/** Build effective training config: base defaults + task setup overrides */
-function buildEffectiveTrainingConfig(setup: TaskSetup) {
-  return {
-    modelId: setup.modelId,
-    gpuId: setup.gpuId,
-    numGPUs: setup.numGPUs ?? 1,
-    gpusPerNode: setup.gpusPerNode ?? Math.min(setup.numGPUs ?? 1, 8),
-    strategyType: setup.strategyType ?? 'ddp',
-    mixedPrecision: setup.mixedPrecision ?? TRAINING_DEFAULTS.mixedPrecision,
-    sequenceLength: setup.sequenceLength ?? TRAINING_DEFAULTS.sequenceLength,
-    activationCheckpointing: setup.activationCheckpointing ?? TRAINING_DEFAULTS.activationCheckpointing,
-    checkpointingGranularity: setup.checkpointingGranularity ?? TRAINING_DEFAULTS.checkpointingGranularity,
-    flashAttention: setup.flashAttention ?? TRAINING_DEFAULTS.flashAttention,
-    globalBatchSize: setup.globalBatchSize ?? TRAINING_DEFAULTS.globalBatchSize,
-    microBatchSize: setup.microBatchSize ?? TRAINING_DEFAULTS.microBatchSize,
-    sequenceParallel: setup.sequenceParallel ?? TRAINING_DEFAULTS.sequenceParallel,
-    finetuningMethod: setup.finetuningMethod ?? TRAINING_DEFAULTS.finetuningMethod,
-    loraRank: setup.loraRank ?? TRAINING_DEFAULTS.loraRank,
-    loraTargetModules: setup.loraTargetModules ?? TRAINING_DEFAULTS.loraTargetModules,
-    tpDegree: setup.tpDegree ?? TRAINING_DEFAULTS.tpDegree,
-    ppDegree: setup.ppDegree ?? TRAINING_DEFAULTS.ppDegree,
-    epDegree: setup.epDegree ?? TRAINING_DEFAULTS.epDegree,
-    cpDegree: setup.cpDegree ?? TRAINING_DEFAULTS.cpDegree,
-    pipelineSchedule: setup.pipelineSchedule ?? TRAINING_DEFAULTS.pipelineSchedule,
-    interleavedStages: setup.interleavedStages ?? TRAINING_DEFAULTS.interleavedStages,
-  };
-}
-
-/** Build effective inference config: base defaults + task setup overrides */
-function buildEffectiveInferenceConfig(setup: TaskSetup) {
-  return {
-    modelId: setup.modelId,
-    gpuId: setup.gpuId,
-    numGPUs: setup.numGPUs ?? 1,
-    weightPrecision: setup.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: setup.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: setup.batchSize ?? INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: setup.inputSeqLen ?? INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: setup.outputSeqLen ?? INFERENCE_DEFAULTS.outputSeqLen,
-    flashAttention: setup.flashAttention ?? INFERENCE_DEFAULTS.flashAttention,
-    pagedAttention: setup.pagedAttention ?? INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: setup.continuousBatching ?? INFERENCE_DEFAULTS.continuousBatching,
-    tensorParallel: setup.tensorParallel ?? INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: setup.expertParallel ?? INFERENCE_DEFAULTS.expertParallel,
-    speculativeDecoding: setup.speculativeDecoding ?? INFERENCE_DEFAULTS.speculativeDecoding,
-    draftModelId: setup.draftModelId ?? INFERENCE_DEFAULTS.draftModelId,
-    numSpeculativeTokens: setup.numSpeculativeTokens ?? INFERENCE_DEFAULTS.numSpeculativeTokens,
-    acceptanceRate: setup.acceptanceRate ?? INFERENCE_DEFAULTS.acceptanceRate,
-  };
-}
-
-function runTraining(cfg: ReturnType<typeof buildEffectiveTrainingConfig>) {
-  const gpusPerNode = cfg.gpusPerNode;
-  const cluster = makeCluster(cfg.gpuId, cfg.numGPUs, gpusPerNode);
-  const engine = new SimulationEngine();
-
-  // Always pass parallelism degrees to match UI behavior (simulation.ts always
-  // sends tp/pp/ep/cp from config store, even when they are 1).
-  const strategyConfig: Record<string, unknown> = {};
-  strategyConfig.tp = cfg.tpDegree;
-  strategyConfig.pp = cfg.ppDegree;
-  strategyConfig.ep = cfg.epDegree;
-  strategyConfig.cp = cfg.cpDegree;
-  strategyConfig.sequenceParallel = cfg.sequenceParallel;
-  if (cfg.pipelineSchedule !== '1f1b') strategyConfig.pipelineSchedule = cfg.pipelineSchedule;
-  if (cfg.interleavedStages !== 2) strategyConfig.interleavedStages = cfg.interleavedStages;
-
-  const config: SimulationConfig = {
-    modelId: cfg.modelId,
-    clusterConfig: cluster,
-    sequenceLength: cfg.sequenceLength,
-    globalBatchSize: cfg.globalBatchSize,
-    microBatchSize: cfg.microBatchSize,
-    strategyType: cfg.strategyType as SimulationConfig['strategyType'],
-    strategyConfig: Object.keys(strategyConfig).length > 0 ? strategyConfig : undefined,
-    activationCheckpointing: cfg.activationCheckpointing,
-    checkpointingGranularity: cfg.checkpointingGranularity,
-    flashAttention: cfg.flashAttention,
-    mixedPrecision: cfg.mixedPrecision as SimulationConfig['mixedPrecision'],
-    finetuningMethod: cfg.finetuningMethod as SimulationConfig['finetuningMethod'],
-    loraRank: cfg.loraRank,
-    loraTargetModules: cfg.loraTargetModules as SimulationConfig['loraTargetModules'],
-  };
-  engine.configure(config);
-  return engine.simulate();
-}
-
-function runInference(cfg: ReturnType<typeof buildEffectiveInferenceConfig>) {
-  // Note: TaskSetup uses 'speculativeDecoding', InferenceSimulationConfig uses 'speculativeEnabled'.
-  return runInferenceSimulation({
-    modelId: cfg.modelId,
-    gpuId: cfg.gpuId,
-    numGPUs: cfg.numGPUs,
-    batchSize: cfg.batchSize,
-    inputSeqLen: cfg.inputSeqLen,
-    outputSeqLen: cfg.outputSeqLen,
-    weightPrecision: cfg.weightPrecision,
-    kvCachePrecision: cfg.kvCachePrecision,
-    flashAttention: cfg.flashAttention,
-    pagedAttention: cfg.pagedAttention,
-    continuousBatching: cfg.continuousBatching,
-    tensorParallel: cfg.tensorParallel,
-    expertParallel: cfg.expertParallel,
-    speculativeEnabled: cfg.speculativeDecoding,
-    draftModelId: cfg.draftModelId ?? undefined,
-    numSpeculativeTokens: cfg.numSpeculativeTokens,
-    acceptanceRate: cfg.acceptanceRate,
-  });
-}
-
-function buildTrainingContext(setup: TaskSetup) {
-  const cfg = buildEffectiveTrainingConfig(setup);
-  const metrics = runTraining(cfg);
-  return { success: metrics.memoryUtilization <= 1.0, ...metrics };
-}
-
-function buildTrainingContextWith(setup: TaskSetup, overrides: Partial<TaskSetup>) {
-  return buildTrainingContext({ ...setup, ...overrides });
-}
-
-function buildInferenceContext(setup: TaskSetup) {
-  const cfg = buildEffectiveInferenceConfig(setup);
-  const result = runInference(cfg);
-  if (!result) return null;
-  const rate = getGPUHourlyRate(cfg.gpuId).rate;
-  const memUtil = result.utilization?.memoryCapacityUtilization ?? 0;
-  return {
-    success: memUtil <= 1.0,
-    ...result,
-    memoryUtilization: memUtil,
-    costPerMillionTokens: calculateCostPerMillionTokens(
-      rate, cfg.numGPUs, result.throughput?.tokensPerSecond ?? 0,
-    ),
-  };
-}
-
-function buildInferenceContextWith(setup: TaskSetup, overrides: Partial<TaskSetup>) {
-  return buildInferenceContext({ ...setup, ...overrides });
-}
-
-function checkAllCriteria(ctx: object | null, criteria: WinningCriterion[]): boolean {
-  if (!ctx) return false;
-  return criteria.every(c => evaluateCriterion(ctx, c));
-}
-
-function checkAnyCriterionFails(ctx: object | null, criteria: WinningCriterion[]): boolean {
-  if (!ctx) return true;
-  return criteria.some(c => !evaluateCriterion(ctx, c));
-}
+import { validateExpectedChanges } from '../../src/game/validation.ts';
+import type { TaskSetup } from '../../src/game/types.ts';
+import {
+  buildTrainingContext,
+  buildTrainingContextWith,
+  buildInferenceContext,
+  buildInferenceContextWith,
+  buildSnapshot,
+  checkAllCriteria,
+  checkAnyCriterionFails,
+} from '../helpers/simulation.ts';
 
 // ── Winning configs ───────────────────────────────────────────────────
 // Overrides from task defaults that make all criteria pass.
@@ -193,15 +30,15 @@ function checkAnyCriterionFails(ctx: object | null, criteria: WinningCriterion[]
 const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   // Training beginner
   'training-beginner-01': { mixedPrecision: 'bf16' },  // FP32→BF16 for Tensor Core throughput
-  'training-beginner-02': { mixedPrecision: 'bf16' },
-  'training-beginner-03': { microBatchSize: 4 },  // MBS 64→4 to fit activation memory (GA=16)
+  'training-beginner-02': { microBatchSize: 4 },  // MBS 64→4 to fit activation memory (GA=16)
+  'training-beginner-03': { sequenceLength: 4096 },  // seqLen 8192→4096 to reduce activation memory
   'training-beginner-04': { activationCheckpointing: true },  // already has BF16 from setup
   'training-beginner-05': { flashAttention: true },  // already has BF16+AC from setup
   'training-beginner-06': { numGPUs: 8 },  // Scale from 1→8 GPUs for DDP throughput
   'training-beginner-07': { strategyType: 'fsdp' },  // DDP→FSDP to fit Qwen3-14B on 8 A100s
   'training-beginner-08': { microBatchSize: 2 },  // 8 GPUs (1 node), reduce MBS from 4 to fit in memory without AC
   'training-beginner-09': { numGPUs: 16, globalBatchSize: 16 },  // Scale to 2 nodes for throughput > 40k tok/s
-  'training-beginner-10': { activationCheckpointing: false },  // Disable AC — 7B fits without it on 8 H100s, MFU jumps from ~40% to ~52%
+  'training-beginner-10': { activationCheckpointing: false, flashAttention: true },  // Disable AC + enable FA — 8B fits without AC on 8 H100s, FA removes attention overhead
 
   // Training intermediate (all have BF16+FA+AC from setup)
   'training-intermediate-01': { strategyType: 'fsdp-tp', tpDegree: 4, sequenceParallel: true },  // FSDP→FSDP-TP
@@ -211,7 +48,7 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'training-intermediate-05': { globalBatchSize: 256 },  // increase GBS to reduce bubble
   'training-intermediate-06': { pipelineSchedule: 'interleaved-1f1b', interleavedStages: 4, globalBatchSize: 128 },  // switch to interleaved
   'training-intermediate-07': { sequenceParallel: true },  // SP reduces activation memory, improves MFU
-  'training-intermediate-08': { tpDegree: 4, globalBatchSize: 256 },
+  'training-intermediate-08': { tpDegree: 4 },
   'training-intermediate-09': { strategyType: 'fsdp' },  // DDP OOMs for MoE, switch to FSDP
   'training-intermediate-10': { mixedPrecision: 'fp8', tpDegree: 4, globalBatchSize: 128 },
 
@@ -224,7 +61,7 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'training-advanced-06': { finetuningMethod: 'qlora' },
   'training-advanced-07': { mixedPrecision: 'fp8', tpDegree: 4, ppDegree: 8, epDegree: 32, globalBatchSize: 8192, microBatchSize: 2 },
   'training-advanced-08': { tpDegree: 8, ppDegree: 8, pipelineSchedule: 'interleaved-1f1b', interleavedStages: 4, checkpointingGranularity: 'selective', globalBatchSize: 256 },
-  'training-advanced-09': { tpDegree: 8, microBatchSize: 2, globalBatchSize: 128 },  // 16 GPUs
+  'training-advanced-09': { gpuId: 'h100-sxm', tpDegree: 8, microBatchSize: 2, globalBatchSize: 128 },  // A100→H100, 16 GPUs
   'training-advanced-10': { tpDegree: 8, ppDegree: 8, pipelineSchedule: 'interleaved-1f1b', interleavedStages: 2, globalBatchSize: 512 },
 
   // Inference beginner
@@ -245,22 +82,22 @@ const WINNING_OVERRIDES: Record<string, Partial<TaskSetup>> = {
   'inference-intermediate-03': { tensorParallel: 8, weightPrecision: 'fp8' },
   'inference-intermediate-04': { tensorParallel: 2 },  // Reduce TP from 8→2: 4 replicas, throughput > 1000
   'inference-intermediate-05': { kvCachePrecision: 'fp8' },  // KV quant to fit batch=32 at 16K, throughput > 135
-  'inference-intermediate-06': { batchSize: 48 },  // A100 TP=8 from setup, batch=48: throughput > 1100 AND TPOT < 15ms
+  'inference-intermediate-06': { batchSize: 32 },  // A100 TP=8 from setup (batch=16), increase to 32: throughput > 1000 AND TPOT < 15ms
   'inference-intermediate-07': { tensorParallel: 4, weightPrecision: 'int4', batchSize: 4 },  // RTX 4090 x4: INT4+TP4+batch4 for TPOT<25ms AND cost<$4/Mtok
-  'inference-intermediate-08': { gpuId: 'h100-sxm', batchSize: 2 },  // A10G can't reach 120 tok/s — switch to H100
+  'inference-intermediate-08': { gpuId: 'h100-sxm' },  // A10G bandwidth too low for TPOT < 12ms — switch to H100
   'inference-intermediate-09': { tensorParallel: 4, speculativeDecoding: true, draftModelId: 'llama2-7b' },
   'inference-intermediate-10': { tensorParallel: 4, weightPrecision: 'fp8' },
 
   // Inference advanced
   'inference-advanced-01': { tensorParallel: 8, weightPrecision: 'int4' },  // FP8 OOMs; INT4 fits
-  'inference-advanced-02': { tensorParallel: 8, expertParallel: 2, weightPrecision: 'fp8', batchSize: 8 },
-  'inference-advanced-03': { tensorParallel: 8, weightPrecision: 'fp8', speculativeDecoding: true, draftModelId: 'llama3.1-8b' },  // merged spec decoding mastery
+  'inference-advanced-02': { tensorParallel: 8, expertParallel: 2, batchSize: 8 },  // FP8 pre-set in setup
+  'inference-advanced-03': { tensorParallel: 8, speculativeDecoding: true, draftModelId: 'llama3.1-8b' },  // FP8 pre-set; spec dec + TP=8
   'inference-advanced-04': { tensorParallel: 8 },  // TP=2→8 divides prefill compute, TTFT < 2500
   'inference-advanced-05': { tensorParallel: 2, weightPrecision: 'fp8' },  // BF16+TP=4→FP8+TP=2 for more replicas, throughput > 250
-  'inference-advanced-06': { tensorParallel: 2, weightPrecision: 'int4', batchSize: 32 },  // L40S: INT4 enables TP=2, 4 replicas
-  'inference-advanced-07': { tensorParallel: 16, weightPrecision: 'fp8', kvCachePrecision: 'fp8' },
-  'inference-advanced-08': { weightPrecision: 'fp8', batchSize: 4 },  // Latency SLA: FP8 + batch=4 meets TTFT/TPOT/throughput
-  'inference-advanced-09': { tensorParallel: 4, weightPrecision: 'int8', batchSize: 4 },  // Mixtral 8x7B on 4x RTX 4090: INT8 + TP=4
+  'inference-advanced-06': { tensorParallel: 2, batchSize: 32 },  // FP8 pre-set; TP=2 + batch for cost optimization
+  'inference-advanced-07': { tensorParallel: 16, kvCachePrecision: 'fp8' },  // FP8 pre-set; TP + KV quant for long context
+  'inference-advanced-08': { batchSize: 4 },  // FP8 pre-set; batch=4 threads the SLA needle
+  'inference-advanced-09': { tensorParallel: 4, weightPrecision: 'int8', batchSize: 4 },  // Mixtral 8x7B on 4x RTX 4090: INT8 + TP=4 (EP=4 + INT8 also valid)
   'inference-advanced-10': { tensorParallel: 8, weightPrecision: 'fp8', batchSize: 16 },
 };
 
@@ -298,18 +135,36 @@ describe('Winning configs should pass all criteria', () => {
   }
 });
 
+describe('Winning configs should satisfy expectedChanges', () => {
+  for (const task of ALL_TASKS) {
+    const overrides = WINNING_OVERRIDES[task.id];
+    if (!overrides || !task.expectedChanges?.length) continue;
+
+    it(task.id, () => {
+      const snapshot = buildSnapshot(task.setup, task.mode);
+      const current = buildSnapshot({ ...task.setup, ...overrides }, task.mode);
+      const { valid, failedChecks } = validateExpectedChanges(snapshot, current, task.expectedChanges);
+      expect(
+        valid,
+        `${task.id} winning config fails expectedChanges: ${failedChecks.map(c => `${c.field}: ${c.check}`).join(', ')}`,
+      ).toBe(true);
+    });
+  }
+});
+
 // ── Hint progression tests ─────────────────────────────────────────────
 
 describe('Hint progressions — key tasks show improvement', () => {
-  it('training-beginner-02: FP32 OOMs → BF16 fits', () => {
-    const task = getTaskById('training-beginner-02')!;
-    // Default: FP32 → should OOM
+  it('training-beginner-03: seqLen 8192 OOMs → seqLen 4096 fits', () => {
+    const task = getTaskById('training-beginner-03')!;
+    // Default: seqLen 8192 → should OOM
     const defaultCtx = buildTrainingContext(task.setup);
     expect(defaultCtx.memoryUtilization).toBeGreaterThan(1.0);
 
-    // Fix: BF16 → should fit
-    const fixedCtx = buildTrainingContextWith(task.setup, { mixedPrecision: 'bf16' });
+    // Fix: seqLen 4096 → should fit with good MFU
+    const fixedCtx = buildTrainingContextWith(task.setup, { sequenceLength: 4096 });
     expect(fixedCtx.memoryUtilization).toBeLessThan(1.0);
+    expect(fixedCtx.mfu).toBeGreaterThan(0.50);
   });
 
   it('training-beginner-04: BF16 no AC OOMs → BF16+AC fits', () => {

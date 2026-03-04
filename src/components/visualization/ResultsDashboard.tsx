@@ -20,7 +20,7 @@ function AnimatedBar({ width, delay = 0, className }: { width: string; delay?: n
     />
   );
 }
-import { Activity, Cpu, HardDrive, Zap, Clock, DollarSign, TrendingUp, Timer, Info, Lightbulb, Copy, Check, Link2, ImageIcon, Download, ChevronDown, ChevronRight } from 'lucide-react';
+import { Activity, Cpu, HardDrive, Zap, Clock, DollarSign, TrendingUp, Timer, Info, Lightbulb, Copy, Check, Link2, ImageIcon, Download, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useSimulationStore } from '../../stores/simulation.ts';
 import { useConfigStore, type TrainingGoal } from '../../stores/config.ts';
 import { useGameStore } from '../../stores/game.ts';
@@ -719,7 +719,7 @@ function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, 
                   <div className="space-y-0.5 text-gray-400">
                     <div className="flex justify-between"><span>Memory</span><span className="text-gray-300">{gpu.memoryGB} GB</span></div>
                     <div className="flex justify-between"><span>Mem bandwidth</span><span className="text-gray-300">{gpu.memoryBandwidthTBps} TB/s</span></div>
-                    <div className="flex justify-between"><span>BF16 / FP16</span><span className="text-gray-300">{gpu.bf16TFLOPS || '—'} / {gpu.fp16TFLOPS} TFLOPS</span></div>
+                    <div className="flex justify-between"><span>{gpu.bf16TFLOPS ? 'BF16' : 'FP16'}</span><span className="text-gray-300">{gpu.bf16TFLOPS || gpu.fp16TFLOPS} TFLOPS</span></div>
                     {gpu.fp8TFLOPS > 0 && (
                       <div className="flex justify-between"><span>FP8</span><span className="text-gray-300">{gpu.fp8TFLOPS} TFLOPS</span></div>
                     )}
@@ -1364,7 +1364,7 @@ function TrainingResults({
                       <div className="space-y-0.5 text-gray-400">
                         <div className="flex justify-between"><span>Memory</span><span className="text-gray-300">{gpu.memoryGB} GB</span></div>
                         <div className="flex justify-between"><span>Mem bandwidth</span><span className="text-gray-300">{gpu.memoryBandwidthTBps} TB/s</span></div>
-                        <div className="flex justify-between"><span>BF16 / FP16</span><span className="text-gray-300">{gpu.bf16TFLOPS || '—'} / {gpu.fp16TFLOPS} TFLOPS</span></div>
+                        <div className="flex justify-between"><span>{gpu.bf16TFLOPS ? 'BF16' : 'FP16'}</span><span className="text-gray-300">{gpu.bf16TFLOPS || gpu.fp16TFLOPS} TFLOPS</span></div>
                         {gpu.fp8TFLOPS > 0 && (
                           <div className="flex justify-between"><span>FP8</span><span className="text-gray-300">{gpu.fp8TFLOPS} TFLOPS</span></div>
                         )}
@@ -1941,6 +1941,13 @@ export function ResultsDashboard() {
               </div>
             </div>
           )}
+          <button
+            onClick={() => simulation.reset()}
+            className="mt-5 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            View configuration
+          </button>
         </div>
       );
     }
@@ -1998,6 +2005,13 @@ export function ResultsDashboard() {
             </div>
           </div>
         )}
+        <button
+          onClick={() => simulation.reset()}
+          className="mt-5 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          View configuration
+        </button>
       </div>
     );
   }

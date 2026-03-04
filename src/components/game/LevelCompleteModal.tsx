@@ -2,9 +2,10 @@
  * Level complete modal — shown once when all tasks in a level are done
  */
 
-import { Trophy, ArrowLeft, RotateCcw } from 'lucide-react';
+import { Trophy, ArrowRight, RotateCcw } from 'lucide-react';
 import { MODE_LABELS, DIFFICULTY_LABELS } from '../../game/constants.ts';
 import type { GameMode, GameDifficulty } from '../../game/types.ts';
+import { ModalBackdrop } from '../ui/ModalBackdrop.tsx';
 
 interface LevelCompleteModalProps {
   mode: GameMode;
@@ -15,7 +16,7 @@ interface LevelCompleteModalProps {
 
 export function LevelCompleteModal({ mode, difficulty, onBack, onReplay }: LevelCompleteModalProps) {
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <ModalBackdrop>
       <div
         className="bg-gray-900 border border-yellow-500/30 rounded-xl p-6 max-w-md w-full mx-4 text-center"
         onClick={e => e.stopPropagation()}
@@ -39,20 +40,20 @@ export function LevelCompleteModal({ mode, difficulty, onBack, onReplay }: Level
         <div className="flex items-center justify-center gap-3">
           <button
             onClick={onReplay}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent/80 text-white rounded-lg font-medium transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
             Replay Level
           </button>
           <button
             onClick={onBack}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent/80 text-white rounded-lg font-medium transition-colors cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" />
             To Levels
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

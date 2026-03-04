@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getMissionById, getMissionsForArc, isMissionUnlocked } from '../../src/rpg/missions/index.ts';
+import { ALL_MISSIONS, getMissionById, getMissionsForArc, isMissionUnlocked } from '../../src/rpg/missions/index.ts';
 import {
   SimulationEngine,
   type SimulationConfig,
@@ -60,10 +60,13 @@ function buildEffectiveTrainingConfig(setup: TaskSetup) {
 }
 
 function buildEffectiveInferenceConfig(setup: TaskSetup) {
+  const numGPUs = setup.numGPUs ?? 1;
+  const gpusPerNode = setup.gpusPerNode ?? Math.min(numGPUs, 8);
   return {
     modelId: setup.modelId,
     gpuId: setup.gpuId,
-    numGPUs: setup.numGPUs ?? 1,
+    numGPUs,
+    gpusPerNode,
     weightPrecision: setup.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
     kvCachePrecision: setup.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
     batchSize: setup.batchSize ?? INFERENCE_DEFAULTS.batchSize,
@@ -115,6 +118,7 @@ function runTraining(cfg: ReturnType<typeof buildEffectiveTrainingConfig>) {
 }
 
 function runInference(cfg: ReturnType<typeof buildEffectiveInferenceConfig>) {
+  const cluster = makeCluster(cfg.gpuId, cfg.numGPUs, cfg.gpusPerNode);
   return runInferenceSimulation({
     modelId: cfg.modelId,
     gpuId: cfg.gpuId,
@@ -133,6 +137,7 @@ function runInference(cfg: ReturnType<typeof buildEffectiveInferenceConfig>) {
     draftModelId: cfg.draftModelId ?? undefined,
     numSpeculativeTokens: cfg.numSpeculativeTokens,
     acceptanceRate: cfg.acceptanceRate,
+    clusterConfig: cluster,
   });
 }
 
@@ -216,19 +221,25 @@ describe('Arc 2 DAG Structure', () => {
   });
 
   it('2-8 requires 2-7, 2-9 requires 2-8', () => {
-    expect(getMissionById('mission-2-8')!.prerequisites).toEqual(['mission-2-7']);
+    expect(getMissionById('mission-2-8')!.prerequisites).toEqual(['mission-2-7', 'mission-1-4']);
     expect(getMissionById('mission-2-9')!.prerequisites).toEqual(['mission-2-8']);
   });
 
-  it('2-10 requires 2-5 and 2-7', () => {
-    expect(getMissionById('mission-2-10')!.prerequisites).toEqual(['mission-2-5', 'mission-2-7']);
+  it('2-10 requires 2-2, 2-5, and 2-7', () => {
+    expect(getMissionById('mission-2-10')!.prerequisites).toEqual(['mission-2-2', 'mission-2-5', 'mission-2-7']);
   });
 
-  it('2-11 (pivot) requires 2-7, 2-8, 2-10 — NOT 2-9', () => {
+  it('2-11 (pivot) requires only 2-10 — NOT 2-7 or 2-9', () => {
     const m = getMissionById('mission-2-11')!;
     expect(m.type).toBe('pivot');
-    expect(m.prerequisites).toEqual(['mission-2-7', 'mission-2-10']);
+    expect(m.prerequisites).toEqual(['mission-2-10']);
+    expect(m.prerequisites).not.toContain('mission-2-7');
     expect(m.prerequisites).not.toContain('mission-2-9');
+  });
+
+  it('2-10 requires mission-2-7 (H100 unlock) in its prerequisite chain', () => {
+    const m = getMissionById('mission-2-10')!;
+    expect(m.prerequisites).toContain('mission-2-7');
   });
 
   it('2-10 is a multi-objective mission', () => {
@@ -247,19 +258,19 @@ describe('Arc 2 Mission Calibration', () => {
   describe('Mission 2-1: First Light (TP for latency)', () => {
     const mission = getMissionById('mission-2-1')!;
 
-    it('default setup (TP=2) → TTFT > 200ms', () => {
+    it('default setup (TP=2) → TTFT > 300ms', () => {
       const ctx = buildInferenceContext(mission.setup);
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
-      expect(ctx!.latency?.ttft).toBeGreaterThan(200);
+      expect(ctx!.latency?.ttft).toBeGreaterThan(300);
       expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('TP=4 → TTFT < 200ms, all criteria pass', () => {
+    it('TP=4 → TTFT < 300ms, all criteria pass', () => {
       const ctx = buildInferenceContext({ ...mission.setup, tensorParallel: 4 });
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
-      expect(ctx!.latency?.ttft).toBeLessThan(200);
+      expect(ctx!.latency?.ttft).toBeLessThan(300);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
   });
@@ -275,12 +286,12 @@ describe('Arc 2 Mission Calibration', () => {
       expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('TP=2 → 4 replicas + TTFT < 300ms', () => {
+    it('TP=2 → 4 replicas + TTFT < 600ms', () => {
       const ctx = buildInferenceContext({ ...mission.setup, tensorParallel: 2 });
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
       expect(ctx!.numReplicas).toBe(4);
-      expect(ctx!.latency?.ttft).toBeLessThan(300);
+      expect(ctx!.latency?.ttft).toBeLessThan(600);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
   });
@@ -397,48 +408,121 @@ describe('Arc 2 Mission Calibration', () => {
     });
   });
 
-  describe('Mission 2-7: The Shipment (FP8 for large models)', () => {
+  describe('Mission 2-7: The Shipment (FP8 training)', () => {
     const mission = getMissionById('mission-2-7')!;
 
-    it('default setup (405B BF16 TP=8) → OOM', () => {
-      const ctx = buildInferenceContext(mission.setup);
-      expect(ctx).not.toBeNull();
-      expect(ctx!.success).toBe(false);
+    it('default setup (BF16) → success but MFU < 45%', () => {
+      const ctx = buildTrainingContext(mission.setup);
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeLessThan(0.45);
+      expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('FP8 → success + throughput > 30 tok/s', () => {
-      const ctx = buildInferenceContext({
+    it('FP8 → success + MFU > 45%', () => {
+      const ctx = buildTrainingContext({
         ...mission.setup,
-        weightPrecision: 'fp8',
+        mixedPrecision: 'fp8',
       });
-      expect(ctx).not.toBeNull();
-      expect(ctx!.success).toBe(true);
-      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(30);
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeGreaterThan(0.45);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('BF16 ceiling is below 45% (physics-enforced)', () => {
+      // BF16 + selective AC + mbs=2 is the BF16 ceiling for this setup
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        mixedPrecision: 'bf16',
+        activationCheckpointing: true,
+        checkpointingGranularity: 'selective',
+        microBatchSize: 2,
+      });
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeLessThan(0.45);
     });
   });
 
   describe('Mission 2-8: Bandwidth Wall (network topology)', () => {
     const mission = getMissionById('mission-2-8')!;
 
-    it('default setup (BF16 TP=16) → throughput < 80 tok/s', () => {
+    it('default setup (FP8 TP=16) → throughput < 96 tok/s, TPOT > 25ms', () => {
       const ctx = buildInferenceContext(mission.setup);
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
-      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(80);
+      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(96);
+      expect(ctx!.latency?.tpot).toBeGreaterThan(25);
       expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
     });
 
-    it('FP8 TP=8 → 2 replicas, throughput > 80 tok/s', () => {
+    it('TP=12 → still cross-node, batch=1 throughput too low (blocked)', () => {
       const ctx = buildInferenceContext({
         ...mission.setup,
-        weightPrecision: 'fp8',
+        tensorParallel: 12,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(2000);
+      expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('TP=9 → still cross-node, batch=1 throughput too low (blocked)', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup,
+        tensorParallel: 9,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.throughput?.tokensPerSecond).toBeLessThan(2000);
+      expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('TP=16 + batch=128 → throughput > 2000 but TPOT > 25ms (bypass blocked)', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup,
+        batchSize: 128,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(2000);
+      expect(ctx!.latency?.tpot).toBeGreaterThan(25);
+      expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('TP=16 + CB + batch=128 → throughput > 2000 but TPOT > 25ms (bypass blocked)', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup,
+        batchSize: 128,
+        continuousBatching: true,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(2000);
+      expect(ctx!.latency?.tpot).toBeGreaterThan(25);
+      expect(checkAnyCriterionFails(ctx, mission.winningCriteria)).toBe(true);
+    });
+
+    it('TP=8 → 2 replicas, TPOT < 25ms', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup,
         tensorParallel: 8,
       });
       expect(ctx).not.toBeNull();
       expect(ctx!.success).toBe(true);
       expect(ctx!.numReplicas).toBe(2);
-      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(80);
+      expect(ctx!.latency?.tpot).toBeLessThan(25);
+      // Winning criteria (>2000 tok/s) requires batch increase too — tested below
+    });
+
+    it('TP=8 + batch=64 → clears all winning criteria', () => {
+      const ctx = buildInferenceContext({
+        ...mission.setup,
+        tensorParallel: 8,
+        batchSize: 64,
+      });
+      expect(ctx).not.toBeNull();
+      expect(ctx!.success).toBe(true);
+      expect(ctx!.latency?.tpot).toBeLessThan(25);
+      expect(ctx!.throughput?.tokensPerSecond).toBeGreaterThan(2000);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
   });
@@ -462,6 +546,42 @@ describe('Arc 2 Mission Calibration', () => {
       expect(ctx.mfu).toBeGreaterThan(0.39);
       expect(checkAllCriteria(ctx, mission.winningCriteria)).toBe(true);
     });
+
+    it('GBS=128 at PP=1 → MFU > 39% (lock needed)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        globalBatchSize: 128,
+      });
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeGreaterThan(0.39);
+    });
+
+    it('FP8 at PP=1 → MFU > 39% (lock needed)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        mixedPrecision: 'fp8',
+      });
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeGreaterThan(0.39);
+    });
+
+    it('AC=off at PP=1 → OOM (physics-blocked)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        activationCheckpointing: false,
+      });
+      expect(ctx.success).toBe(false);
+      expect(ctx.memoryUtilization).toBeGreaterThan(1.0);
+    });
+
+    it('MBS=2 at PP=1 → MFU > 39% (lock needed)', () => {
+      const ctx = buildTrainingContext({
+        ...mission.setup,
+        microBatchSize: 2,
+      });
+      expect(ctx.success).toBe(true);
+      expect(ctx.mfu).toBeGreaterThan(0.39);
+    });
   });
 
   describe('Mission 2-10: The Protein Problem (multi-objective)', () => {
@@ -477,37 +597,93 @@ describe('Arc 2 Mission Calibration', () => {
         expect(checkAnyCriterionFails(ctx, objTrain.winningCriteria)).toBe(true);
       });
 
-      it('BF16 + AC → fits but MFU < 50%', () => {
+      it('BF16 + AC → fits but MFU < 52%', () => {
         const ctx = buildTrainingContext({
           ...objTrain.setup,
           activationCheckpointing: true,
         });
         expect(ctx.success).toBe(true);
-        expect(ctx.mfu).toBeLessThan(0.50);
+        expect(ctx.mfu).toBeLessThan(0.52);
+        expect(checkAnyCriterionFails(ctx, objTrain.winningCriteria)).toBe(true);
       });
 
-      it('FP8 + AC → fits + MFU > 50%', () => {
+      it('FP8 + AC → fits + MFU > 52%', () => {
         const ctx = buildTrainingContext({
           ...objTrain.setup,
           mixedPrecision: 'fp8',
           activationCheckpointing: true,
         });
         expect(ctx.success).toBe(true);
-        expect(ctx.mfu).toBeGreaterThan(0.50);
+        expect(ctx.mfu).toBeGreaterThan(0.52);
         expect(checkAllCriteria(ctx, objTrain.winningCriteria)).toBe(true);
+      });
+
+      it('FSDP-TP TP=8 + FP8 + no AC → fits + MFU > 52% (alternative winning path)', () => {
+        const ctx = buildTrainingContext({
+          ...objTrain.setup,
+          strategyType: 'fsdp-tp',
+          tpDegree: 8,
+          mixedPrecision: 'fp8',
+          activationCheckpointing: false,
+        });
+        expect(ctx.success).toBe(true);
+        expect(ctx.mfu).toBeGreaterThan(0.52);
+        expect(checkAllCriteria(ctx, objTrain.winningCriteria)).toBe(true);
+      });
+
+      it('FP8 + no AC → OOM (AC is physics-required at MBS=8)', () => {
+        const ctx = buildTrainingContext({
+          ...objTrain.setup,
+          mixedPrecision: 'fp8',
+          activationCheckpointing: false,
+        });
+        expect(ctx.success).toBe(false);
+        expect(ctx.memoryUtilization).toBeGreaterThan(1.0);
+      });
+
+      it('BF16 ceiling < 52% (strongest BF16 path still fails MFU threshold)', () => {
+        const ctx = buildTrainingContext({
+          ...objTrain.setup,
+          mixedPrecision: 'bf16',
+          activationCheckpointing: true,
+          checkpointingGranularity: 'selective',
+          strategyType: 'fsdp-tp',
+          tpDegree: 4,
+          sequenceParallel: true,
+        });
+        expect(ctx.success).toBe(true);
+        expect(ctx.mfu).toBeLessThan(0.52);
+      });
+
+      it('LoRA exploit blocked by finetuningMethod unchanged constraint', () => {
+        // LoRA trivially solves the OOM (no AC needed), bypassing the lesson
+        const ctx = buildTrainingContext({
+          ...objTrain.setup,
+          mixedPrecision: 'fp8',
+          finetuningMethod: 'lora',
+          activationCheckpointing: false,
+        });
+        expect(ctx.success).toBe(true); // fits without AC — that's the exploit
+        // But the expectedChanges constraint blocks this path:
+        // finetuningMethod: 'unchanged' means setup default (full) must be kept
+        const finetuningLock = objTrain.expectedChanges.find(
+          (e: { field: string }) => e.field === 'finetuningMethod'
+        );
+        expect(finetuningLock).toBeDefined();
+        expect(finetuningLock!.check).toBe('unchanged');
       });
     });
 
     describe('Objective 2 — Inference: Signal analysis', () => {
-      it('default setup (BF16 TP=2) → TTFT > 200ms', () => {
+      it('default setup (BF16 TP=2) → TTFT > 300ms', () => {
         const ctx = buildInferenceContext(objInfer.setup);
         expect(ctx).not.toBeNull();
         expect(ctx!.success).toBe(true);
-        expect(ctx!.latency?.ttft).toBeGreaterThan(200);
+        expect(ctx!.latency?.ttft).toBeGreaterThan(300);
         expect(checkAnyCriterionFails(ctx, objInfer.winningCriteria)).toBe(true);
       });
 
-      it('INT8 TP=4 → TTFT < 200ms', () => {
+      it('INT8 TP=4 → TTFT < 300ms', () => {
         const ctx = buildInferenceContext({
           ...objInfer.setup,
           weightPrecision: 'int8',
@@ -515,7 +691,7 @@ describe('Arc 2 Mission Calibration', () => {
         });
         expect(ctx).not.toBeNull();
         expect(ctx!.success).toBe(true);
-        expect(ctx!.latency?.ttft).toBeLessThan(200);
+        expect(ctx!.latency?.ttft).toBeLessThan(300);
         expect(checkAllCriteria(ctx, objInfer.winningCriteria)).toBe(true);
       });
     });

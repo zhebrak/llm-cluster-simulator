@@ -59,14 +59,6 @@ describe('Multi-objective mission structure', () => {
     }
   });
 
-  it('all objectives have at least one winning criterion', () => {
-    for (const m of multiObjMissions) {
-      for (const obj of m.objectives!) {
-        expect(obj.winningCriteria.length, `${m.id}/${obj.id} has no criteria`).toBeGreaterThan(0);
-      }
-    }
-  });
-
   it('all objectives have a setup with modelId and gpuId', () => {
     for (const m of multiObjMissions) {
       for (const obj of m.objectives!) {
@@ -120,14 +112,6 @@ describe('Mission 2-10: The Protein Problem', () => {
       expect(guarded, `${obj.id} should guard gpuId`).toContain('gpuId');
       expect(guarded, `${obj.id} should guard numGPUs`).toContain('numGPUs');
     }
-  });
-
-  it('mission-level winningCriteria is empty (objectives carry their own)', () => {
-    expect(mission.winningCriteria).toEqual([]);
-  });
-
-  it('mission-level expectedChanges is empty', () => {
-    expect(mission.expectedChanges).toEqual([]);
   });
 
   it('mission has skills awarded (resource-efficiency)', () => {

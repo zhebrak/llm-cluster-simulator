@@ -1003,6 +1003,11 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
 
     // PP can use NVLink or IB depending on placement.
     // Pipeline critical path is limited by the slowest link — use min() for mixed configs.
+    // TODO: When PP spans nodes with TP>1, Megatron-LM uses scatter-gather to parallelize
+    // cross-node P2P across TP ranks (each rank sends 1/tp of the activation through a
+    // separate NIC), achieving effective BW of tp × perNicBW. We model a single P2P at
+    // perNicBW. Impact <0.01pp MFU for all tier 1 anchors (PP comm is <0.3% of step time
+    // for 175B+ models due to C/(C+T) overlap hiding 95%+ of it).
     const stagesPerNode = Math.floor(cluster.gpusPerNode / tp);
     const perNicBW = getPerNicBandwidthGBps(
       cluster.node.interNodeInterconnect, cluster.node.numNICs
@@ -1215,6 +1220,13 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
     // comm hidden behind next layer's compute; small models → less overlap).
     // TP comm volume from computeCommunication() covers all numLayers, but each PP stage
     // only processes numLayers/pp layers. Scale to per-stage for the layer-level overlap model.
+    // TODO: Modern frameworks decompose TP all-reduce into ReduceScatter + AllGather, with
+    // AG overlapped with the next GEMM. Our C/(C+T) model treats TP as a monolithic cost.
+    // For compute-dominant configs (all tier 1), both models converge: C/(C+T) gives ~4%
+    // exposed vs RS/AG pipelining's <1%, but TP comm is only 3-10% of step time, so the
+    // difference is <0.1pp MFU. For small models with high TP (e.g., 7B TP=8), the gap
+    // could reach ~0.2pp. See overlap.ts computeTPOverlap() for the shared model, and
+    // computeFSDPExposedComm() for the per-layer RS/AG decomposition already used by FSDP.
     const crossNodeTP = tp > cluster.gpusPerNode;
     // Dense: 2 TP collectives/layer (attention + MLP), MoE with EP>1: 1 (attention only)
     const moeLayersPerStageTP = (isMoE && ep > 1)

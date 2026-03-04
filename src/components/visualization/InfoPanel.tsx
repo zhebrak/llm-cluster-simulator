@@ -212,14 +212,14 @@ export function HardwarePanel() {
       <div className="text-gray-400 font-medium mb-1">Per GPU</div>
       <InfoRow label="Memory" value={gpu.memoryGB} unit="GB" />
       <InfoRow label="Bandwidth" value={`${(gpu.memoryBandwidthTBps * 1000).toFixed(0)}`} unit="GB/s" />
-      <InfoRow label="BF16 TFLOPS" value={gpu.bf16TFLOPS} />
-      <InfoRow label="FP8 TFLOPS" value={gpu.fp8TFLOPS} />
+      <InfoRow label={gpu.bf16TFLOPS ? 'BF16 TFLOPS' : 'FP16 TFLOPS'} value={gpu.bf16TFLOPS || gpu.fp16TFLOPS} />
+      {gpu.fp8TFLOPS > 0 && <InfoRow label="FP8 TFLOPS" value={gpu.fp8TFLOPS} />}
       <InfoRow label="TDP" value={gpu.tdpWatts} unit="W" />
 
       <div className="border-t border-gray-800 my-2" />
       <div className="text-gray-400 font-medium mb-1">Cluster Total</div>
       <InfoRow label="Memory" value={formatInteger(totalMemoryGB)} unit="GB" />
-      <InfoRow label="BF16 TFLOPS" value={formatInteger(totalTFLOPS)} />
+      <InfoRow label={gpu.bf16TFLOPS ? 'BF16 TFLOPS' : 'FP16 TFLOPS'} value={formatInteger(totalTFLOPS)} />
       {gpu.estimated && (
         <>
           <div className="border-t border-gray-800 my-2" />

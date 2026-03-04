@@ -210,8 +210,9 @@ export function buildValidationContext(
   if (mode === 'training') {
     const { result, metrics } = simState.training;
     if (!result || !metrics) return null;
+    const { gpuId } = useConfigStore.getState();
 
-    return { success: result.success, ...metrics };
+    return { success: result.success, gpuId, ...metrics };
   }
 
   if (mode === 'inference') {

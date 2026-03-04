@@ -3,12 +3,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ChevronsUp, ChevronsDown, Lightbulb, X, Check } from 'lucide-react';
+import { ArrowLeft, ChevronsUp, ChevronsDown, X, Check } from 'lucide-react';
 import { useGameStore } from '../../stores/game.ts';
 import { getTaskById, getTasksForLevel } from '../../game/tasks/index.ts';
 import { MODE_LABELS, DIFFICULTY_LABELS } from '../../game/constants.ts';
 import { CriteriaChecklist } from './CriteriaChecklist.tsx';
-import { GlossaryText } from './GlossaryText.tsx';
+import { NarrativeBlocks } from './NarrativeBlocks.tsx';
+import { HintCarousel } from './HintCarousel.tsx';
 import { Tooltip } from '../ui/Tooltip.tsx';
 import { ConfirmResetButton } from '../ui/ConfirmResetButton.tsx';
 
@@ -117,9 +118,6 @@ export function TaskHUD() {
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Reset to task defaults */}
-        <ConfirmResetButton onConfirm={resetTask} tooltip="Reset to task defaults" />
-
         {/* Expand/collapse toggle */}
         <Tooltip text={hudExpanded ? 'Collapse' : 'Expand'}>
           <button
@@ -131,6 +129,9 @@ export function TaskHUD() {
               : <ChevronsDown className="w-4 h-4" />}
           </button>
         </Tooltip>
+
+        {/* Reset to task defaults */}
+        <ConfirmResetButton onConfirm={resetTask} tooltip="Reset to task defaults" />
 
         {/* Exit learning mode */}
         <Tooltip text="Exit learning mode">
@@ -172,11 +173,7 @@ export function TaskHUD() {
 
           {/* Briefing — always shown, split into paragraphs */}
           <div className="space-y-2 mb-3">
-            {task.briefing.trim().split('\n\n').map((para, i) => (
-              <p key={i} className="text-sm text-gray-300 leading-relaxed">
-                <GlossaryText text={para.trim()} />
-              </p>
-            ))}
+            <NarrativeBlocks text={task.briefing} textClass="text-gray-300" />
           </div>
 
           {/* Divider */}
@@ -213,40 +210,14 @@ export function TaskHUD() {
 
             {/* Hints */}
             <div className="flex-1">
-              {/* Header row: dots + show-hint button */}
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <span className="text-sm text-gray-400">Hints</span>
-                {hintsRevealed > 1 && task.hints.slice(0, hintsRevealed).map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setActiveHintIndex(i)}
-                    className={`w-5 h-5 rounded-full text-xs cursor-pointer transition-colors ${
-                      i === activeHintIndex
-                        ? 'bg-yellow-400/30 text-yellow-300'
-                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
-                {hasMoreHints && (
-                  <button
-                    onClick={revealNextHint}
-                    className="text-sm text-yellow-400/70 hover:text-yellow-400 cursor-pointer flex items-center gap-1 ml-auto"
-                  >
-                    <Lightbulb className="w-3.5 h-3.5" />
-                    Show next hint
-                  </button>
-                )}
-              </div>
-
-              {/* Active hint card */}
-              {hintsRevealed > 0 && (
-                <div className="text-sm text-yellow-200/80 bg-yellow-900/20 border border-yellow-800/30 rounded px-2.5 py-1.5">
-                  <Lightbulb className="w-3.5 h-3.5 inline mr-1 text-yellow-400" />
-                  <GlossaryText text={task.hints[activeHintIndex].trim()} />
-                </div>
-              )}
+              <HintCarousel
+                hints={task.hints}
+                hintsRevealed={hintsRevealed}
+                activeHintIndex={activeHintIndex}
+                onSelectHint={setActiveHintIndex}
+                onRevealNext={revealNextHint}
+                hasMore={hasMoreHints}
+              />
             </div>
           </div>
 

@@ -19,8 +19,8 @@ import type { ValidationResult } from '../game/types.ts';
 import type { TaskConfigSnapshot } from '../game/validation.ts';
 import { buildValidationContext, validateTask, captureTaskConfig, validateExpectedChanges } from '../game/validation.ts';
 import { applySetupToConfig } from '../game/setup.ts';
-import { CONFIG_STORAGE_KEY } from '../game/constants.ts';
 import { RPG_STORAGE_KEY, PRE_RPG_CONFIG_KEY } from '../rpg/constants.ts';
+import { snapshotConfig, loadPersistedState, recoverOrphanedConfig } from './persistence.ts';
 import { getMissionById, getMissionsForArc, isMissionUnlocked, ALL_ARCS, ALL_MISSIONS } from '../rpg/missions/index.ts';
 import { HARDWARE_PROGRESSION } from '../rpg/hardware.ts';
 import { useConfigStore } from './config.ts';
@@ -116,23 +116,6 @@ function persistRPGState(state: RPGState): void {
   } catch { /* localStorage full or unavailable */ }
 }
 
-function loadPersistedRPGState(): Partial<RPGState> {
-  try {
-    const raw = localStorage.getItem(RPG_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-
-function snapshotConfig(): string | null {
-  try {
-    return localStorage.getItem(CONFIG_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
 
 function restoreMissionState(state: RPGState, missionId: string): void {
   const saved = state.missionStates[missionId];
@@ -172,16 +155,10 @@ function saveMissionState(state: RPGState): void {
 
 // ── Load initial state ───────────────────────────────────────────────────
 
-const persisted = loadPersistedRPGState();
+const persisted = loadPersistedState<RPGState>(RPG_STORAGE_KEY);
 
 // Crash recovery: if pre-RPG config exists but RPG is not active, restore
-try {
-  const preRPGConfig = localStorage.getItem(PRE_RPG_CONFIG_KEY);
-  if (preRPGConfig && !persisted.active) {
-    localStorage.setItem(CONFIG_STORAGE_KEY, preRPGConfig);
-    localStorage.removeItem(PRE_RPG_CONFIG_KEY);
-  }
-} catch { /* ignore */ }
+recoverOrphanedConfig(PRE_RPG_CONFIG_KEY, persisted.active ?? false);
 
 // ── Store ────────────────────────────────────────────────────────────────
 
@@ -330,15 +307,20 @@ export const useRPGStore = create<RPGState>()(
         restoreMissionState(state, id);
         state.lastValidatedRunCounter = 0;
 
-        // Multi-objective: initialize objective state
-        if (mission.objectives && mission.objectives.length > 0) {
-          state.activeObjectiveId = null; // Player picks an objective
-        } else {
-          state.activeObjectiveId = null;
-        }
+        state.activeObjectiveId = null;
       });
 
-      // Apply mission setup to config
+      // Multi-objective: auto-select first uncompleted objective
+      if (mission.objectives && mission.objectives.length > 0) {
+        const { clearedObjectiveIds } = get();
+        const first = mission.objectives.find(
+          o => !clearedObjectiveIds.includes(o.id)
+        ) ?? mission.objectives[0];
+        get().selectObjective(first.id);
+        return;
+      }
+
+      // Single-objective path
       applySetupToConfig(mission.setup, mission.primaryMode);
 
       // Capture config snapshot for expected-change validation

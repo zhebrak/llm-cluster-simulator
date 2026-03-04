@@ -52,6 +52,7 @@ The physics model is calibrated against published training runs.
 - **Inference** — TTFT, TPOT, speculative decoding, continuous batching, GGUF/GPTQ/AWQ, KV cache sizing.
 - **Training** — LoRA/QLoRA, FP8/FP4 mixed precision, selective activation checkpointing, cost projection.
 
+
 #### What it does not model
 - Fused and custom kernels (FA3), NVMe/CPU offloading, runtime optimisations.
 - Serving frameworks (vLLM/TensorRT), disaggregated prefill/decode, dynamic batching, prefix caching.
@@ -59,7 +60,16 @@ The physics model is calibrated against published training runs.
 - Non-training overhead: checkpointing, data loading, failure recovery.
 - TPUs, Trainium/Inferentia, non-IB clusters.
 
-![Inference screenshot](docs/images/inference.png)
+
+## Learning
+
+- **[Learn Mode](docs/LEARNING.md#learn-mode)** — 60 structured tasks across 6 tracks (training and inference, beginner to advanced). Each task sets up a scenario, defines success criteria, and provides progressive hints. Enter via the **Learn** button in navigation panel.
+- **[Space RPG](docs/LEARNING.md#space-rpg)** — a narrative campaign teaching the full parallelism stack through a branching story with hardware unlocks, skill progression, and multi-objective challenges. Enter via the **Play** button in navigation panel.
+
+<p align="center">
+<img width="50%" src="docs/images/mission_log.png">
+</p>
+
 
 ## Documentation
 
@@ -70,6 +80,7 @@ The physics model is calibrated against published training runs.
 - [Models](docs/MODELS.md) — Model registry, architecture types, FLOPs.
 - [Inference](docs/INFERENCE.md) — Inference latency, KV cache, speculative decoding.
 - [Optimizer](docs/OPTIMIZER.md) — Recommendation engine, auto-optimizer.
+- [Learning](docs/LEARNING.md) — Learn Mode tasks, Space RPG missions.
 - [Benchmarks](docs/BENCHMARKS.md) — Calibration data and known gaps.
 
 ## Development

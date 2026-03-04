@@ -7,89 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateExpectedChanges } from '../../src/game/validation.ts';
-import type { TaskConfigSnapshot } from '../../src/game/validation.ts';
-import { getMissionById } from '../../src/rpg/missions/index.ts';
-import { INFERENCE_DEFAULTS } from '../../src/game/defaults.ts';
-import type { RPGMission } from '../../src/rpg/types.ts';
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-/** Build a full TaskConfigSnapshot with inference-mode defaults. */
-function makeSnapshot(overrides: Partial<TaskConfigSnapshot> = {}): TaskConfigSnapshot {
-  return {
-    // Hardware
-    modelId: 'llama3.1-8b',
-    gpuId: 'a100-sxm-80gb',
-    numGPUs: 1,
-    // Training (type-required but irrelevant for inference missions)
-    precision: 'bf16',
-    activationCheckpointing: false,
-    checkpointingGranularity: 'full',
-    flashAttention: INFERENCE_DEFAULTS.flashAttention,
-    globalBatchSize: 64,
-    microBatchSize: 1,
-    sequenceLength: 1024,
-    sequenceParallel: false,
-    strategyType: 'ddp',
-    tpDegree: 1,
-    ppDegree: 1,
-    epDegree: 1,
-    cpDegree: 1,
-    pipelineSchedule: '1f1b',
-    interleavedStages: 1,
-    finetuningMethod: 'full',
-    loraRank: 16,
-    loraTargetModules: 'q_v',
-    // Inference (from INFERENCE_DEFAULTS)
-    weightPrecision: INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: INFERENCE_DEFAULTS.outputSeqLen,
-    tensorParallel: INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: INFERENCE_DEFAULTS.expertParallel,
-    pagedAttention: INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: INFERENCE_DEFAULTS.continuousBatching,
-    speculativeDecoding: INFERENCE_DEFAULTS.speculativeDecoding,
-    pricePerGPUHour: null,
-    ...overrides,
-  };
-}
-
-/**
- * Build snapshot matching what captureTaskConfig() produces after applySetupToConfig.
- * Merges inference defaults with the mission's setup, then applies overrides.
- */
-function makeSnapshotForMission(missionId: string, overrides: Partial<TaskConfigSnapshot> = {}): TaskConfigSnapshot {
-  const mission = getMissionById(missionId);
-  if (!mission) throw new Error(`Mission ${missionId} not found`);
-  const s = mission.setup;
-  return makeSnapshot({
-    modelId: s.modelId,
-    gpuId: s.gpuId,
-    numGPUs: s.numGPUs ?? 1,
-    weightPrecision: s.weightPrecision ?? INFERENCE_DEFAULTS.weightPrecision,
-    kvCachePrecision: s.kvCachePrecision ?? INFERENCE_DEFAULTS.kvCachePrecision,
-    batchSize: s.batchSize ?? INFERENCE_DEFAULTS.batchSize,
-    inputSeqLen: s.inputSeqLen ?? INFERENCE_DEFAULTS.inputSeqLen,
-    outputSeqLen: s.outputSeqLen ?? INFERENCE_DEFAULTS.outputSeqLen,
-    flashAttention: s.flashAttention ?? INFERENCE_DEFAULTS.flashAttention,
-    pagedAttention: s.pagedAttention ?? INFERENCE_DEFAULTS.pagedAttention,
-    continuousBatching: s.continuousBatching ?? INFERENCE_DEFAULTS.continuousBatching,
-    tensorParallel: s.tensorParallel ?? INFERENCE_DEFAULTS.tensorParallel,
-    expertParallel: s.expertParallel ?? INFERENCE_DEFAULTS.expertParallel,
-    speculativeDecoding: s.speculativeDecoding ?? INFERENCE_DEFAULTS.speculativeDecoding,
-    ...overrides,
-  });
-}
-
-/** Validate expectedChanges for a mission. Returns { valid, failedChecks }. */
-function validate(missionId: string, snapshot: TaskConfigSnapshot, current: TaskConfigSnapshot) {
-  const mission = getMissionById(missionId);
-  if (!mission) throw new Error(`Mission ${missionId} not found`);
-  return validateExpectedChanges(snapshot, current, mission.expectedChanges);
-}
+import { makeSnapshotForMission, validateMission as validate } from '../helpers/snapshots.ts';
 
 // ═════════════════════════════════════════════════════════════════════
 // Mission 1-1: Wake-Up Call (lesson: quantization)
@@ -179,7 +97,7 @@ describe('Mission 1-2 — The Upgrade (model selection)', () => {
 
 // ═════════════════════════════════════════════════════════════════════
 // Mission 1-3: Slow Reflexes (lesson: GPU bandwidth)
-// expectedChanges: gpuId=changed, modelId=unchanged
+// expectedChanges: gpuId=changed, modelId=unchanged, speculativeDecoding=unchanged
 // ═════════════════════════════════════════════════════════════════════
 
 describe('Mission 1-3 — Slow Reflexes (GPU bandwidth)', () => {
@@ -201,6 +119,10 @@ describe('Mission 1-3 — Slow Reflexes (GPU bandwidth)', () => {
     expect(validate('mission-1-3', snapshot,
       makeSnapshotForMission('mission-1-3', { gpuId: 'rtx-4090', weightPrecision: 'int4' })).valid).toBe(true);
   });
+  it('correct + tinkering: change GPU AND also change batch size', () => {
+    expect(validate('mission-1-3', snapshot,
+      makeSnapshotForMission('mission-1-3', { gpuId: 'rtx-4090', batchSize: 4 })).valid).toBe(true);
+  });
   it('bypass: only change model (did not learn bandwidth matters)', () => {
     expect(validate('mission-1-3', snapshot,
       makeSnapshotForMission('mission-1-3', { modelId: 'qwen3-4b' })).valid).toBe(false);
@@ -215,6 +137,10 @@ describe('Mission 1-3 — Slow Reflexes (GPU bandwidth)', () => {
   it('bypass: increase numGPUs instead of learning bandwidth', () => {
     expect(validate('mission-1-3', snapshot,
       makeSnapshotForMission('mission-1-3', { numGPUs: 4 })).valid).toBe(false);
+  });
+  it('bypass: only enable speculative decoding', () => {
+    expect(validate('mission-1-3', snapshot,
+      makeSnapshotForMission('mission-1-3', { speculativeDecoding: true })).valid).toBe(false);
   });
 });
 

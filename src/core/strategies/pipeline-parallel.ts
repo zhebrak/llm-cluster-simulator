@@ -296,6 +296,10 @@ export class PipelineParallelStrategy extends ParallelismStrategy {
     const commPerMicroBatch = communication.pipelineParallel / m / 2 / (pp - 1 || 1);
 
     // PP can use inter-node links since it's point-to-point
+    // TODO: When TP>1 and PP spans nodes, Megatron-LM scatter-gathers PP activations
+    // across TP ranks (each rank sends 1/tp via a separate NIC), achieving tp × perNicBW.
+    // We model a single P2P at perNicBW. Impact <0.01pp MFU for all tier 1 anchors —
+    // PP comm is negligible relative to compute for large models.
     const perNicBW = getPerNicBandwidthGBps(
       cluster.node.interNodeInterconnect, cluster.node.numNICs
     );

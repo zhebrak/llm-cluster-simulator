@@ -53,6 +53,8 @@ src/core/
   collectives/    Collective operation primitives
   physics/        Derived physics constants
   validation/     Config validators, benchmark validation
+src/game/       Learn Mode tasks, validation, glossary, setup
+src/rpg/        Space RPG missions, skills, hardware progression, scoring
 src/stores/       Zustand config store
 src/components/   React UI components
 src/utils/        Share URL encoding, formatting
@@ -155,6 +157,7 @@ models/GPUs also does not require a bump.
 6. Read [INFERENCE.md](INFERENCE.md) for the inference latency model
 7. Read [OPTIMIZER.md](OPTIMIZER.md) for auto-optimization and recommendations
 8. Read [BENCHMARKS.md](BENCHMARKS.md) for calibration and validation
+9. Read [LEARNING.md](LEARNING.md) for the interactive learning modes
 
 ### For Agents
 
@@ -167,6 +170,7 @@ models/GPUs also does not require a bump.
    - Inference latency → [INFERENCE.md](INFERENCE.md)
    - Optimizer/recommendations → [OPTIMIZER.md](OPTIMIZER.md)
    - Calibration data → [BENCHMARKS.md](BENCHMARKS.md)
+   - Learn Mode / RPG → [LEARNING.md](LEARNING.md)
 
 ### File Index
 
@@ -180,3 +184,4 @@ models/GPUs also does not require a bump.
 | [INFERENCE.md](INFERENCE.md) | ~400 | Inference latency, KV cache, speculative decoding |
 | [OPTIMIZER.md](OPTIMIZER.md) | ~350 | Recommendation engine, auto-optimizer, grid search |
 | [BENCHMARKS.md](BENCHMARKS.md) | ~690 | Calibration data, known gaps, source references |
+| [LEARNING.md](LEARNING.md) | ~120 | Learn Mode (60 tasks), Space RPG (26 missions) |

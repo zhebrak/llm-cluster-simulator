@@ -312,14 +312,14 @@ describe('Game store — per-task state preservation', () => {
       active: true,
       activeMode: 'training',
       activeDifficulty: 'beginner',
-      progress: { 'training-beginner': ['training-beginner-01', 'training-beginner-02'] },
+      progress: { 'training-beginner': ['training-beginner-01', 'training-beginner-03'] },
       taskStates: {
         'training-beginner-01': {
           hintsRevealed: 2,
           attempts: 3,
           lastValidation: { passed: true, results: [] },
         },
-        'training-beginner-02': {
+        'training-beginner-03': {
           hintsRevealed: 1,
           attempts: 1,
           lastValidation: { passed: true, results: [] },
@@ -337,7 +337,7 @@ describe('Game store — per-task state preservation', () => {
     const state = useGameStore.getState();
     // Beginner task states should be cleared
     expect(state.taskStates['training-beginner-01']).toBeUndefined();
-    expect(state.taskStates['training-beginner-02']).toBeUndefined();
+    expect(state.taskStates['training-beginner-03']).toBeUndefined();
     // Other level's task states should be preserved
     expect(state.taskStates['training-intermediate-01']).toBeDefined();
   });

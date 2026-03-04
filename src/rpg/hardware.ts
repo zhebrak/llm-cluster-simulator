@@ -63,9 +63,9 @@ export const HARDWARE_PROGRESSION: HardwareTier[] = [
 
   // ── Arc 3: Wonder ───────────────────────────────────────────────────
   {
-    id: 'planetary-forge',
-    name: 'Planetary Fabrication Forge',
-    description: 'Kepler-442b surface minerals include semiconductor-grade silicates. Chief Engineer Okafor has been fabricating compute modules since orbital insertion — 62 full nodes, assembled and tested.',
+    id: 'asteroid-forge',
+    name: 'Asteroid Fabrication Forge',
+    description: 'The inner asteroid belt is rich in semiconductor-grade silicates. Chief Engineer Okafor\'s fabrication line has been forging compute modules — 62 full nodes, assembled and tested.',
     gpus: [
       { gpuId: 'h100-sxm', count: 496, label: 'H100 SXM 80GB' },
     ],

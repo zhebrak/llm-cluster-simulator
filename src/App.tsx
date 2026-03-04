@@ -17,7 +17,7 @@ function App() {
       history.replaceState({}, '', window.location.pathname);
       return true;
     }
-    if (params.has('config') || params.has('preset') || params.has('learn') || params.has('rpg')) return false;
+    if (params.has('config') || params.has('preset') || params.has('learn') || params.has('play')) return false;
     return !localStorage.getItem('llm-sim-welcomed');
   });
   const [presetError, setPresetError] = useState<string | null>(() => {
@@ -87,8 +87,8 @@ function App() {
       return;
     }
 
-    if (params.has('rpg')) {
-      history.replaceState({}, '', window.location.pathname + '#rpg');
+    if (params.has('play')) {
+      history.replaceState({}, '', window.location.pathname + '#play');
       const rpg = useRPGStore.getState();
       if (!rpg.active) {
         rpg.enter();
