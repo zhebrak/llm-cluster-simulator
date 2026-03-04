@@ -28,7 +28,7 @@ export function IntroBriefing() {
   return (
     <ModalBackdrop backdropClass="bg-black/80">
       <div
-        className="bg-gray-950 border border-amber-500/30 rounded-xl max-w-lg w-full mx-4"
+        className="bg-gray-950 border border-amber-500/30 rounded-xl max-w-lg w-full mx-4 max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Hero image with header overlaid */}
@@ -74,7 +74,7 @@ export function IntroBriefing() {
         </div>
 
         {/* Body */}
-        <div className="px-5 pb-5 pt-3 space-y-2.5">
+        <div className="px-5 pb-5 pt-3 space-y-2.5 overflow-y-auto min-h-0 flex-1">
           {paragraphs.map((text, i) => (
             <p key={i} className="text-sm text-gray-300 leading-relaxed font-mono">
               {text}
