@@ -141,17 +141,20 @@ export function computeTrainingRoofline(
     // Handle MLA: different projection dimensions
     let flops: number;
     let intensity: number;
-    if (model.attentionType === 'mla' && model.qLoraRank && model.kvLoraRank) {
-      // MLA: Q path = down_proj(H→qLoraRank) + up_proj(qLoraRank→numHeads*headDim)
-      // KV path = down_proj(H→kvLoraRank)
+    if (model.attentionType === 'mla' && model.qLoraRank && model.kvLoraRank && model.qkNopeHeadDim && model.qkRopeHeadDim && model.vHeadDim) {
+      // MLA: Q path = q_a_proj(H→qLoraRank) + q_b_proj(qLoraRank→nH×(qkNope+qkRope))
+      // KV path = kv_a_proj(H→kvLoraRank+qkRope) + kv_b_proj(kvLoraRank→nH×(qkNope+vHead))
       const qLoraRank = model.qLoraRank;
       const kvLoraRank = model.kvLoraRank;
+      const qOutDim = numHeads * (model.qkNopeHeadDim + model.qkRopeHeadDim);
+      const kvUpOutDim = numHeads * (model.qkNopeHeadDim + model.vHeadDim);
       const qDown = 2 * M * H * qLoraRank / tp;
-      const qUp = 2 * M * qLoraRank * (numHeads * headDim) / tp;
-      const kvDown = 2 * M * H * kvLoraRank / tp;
-      flops = (qDown + qUp + kvDown) * numLayers;
-      // Intensity: use the dominant matmul (qUp is largest)
-      intensity = gemmIntensity(M, qLoraRank, (numHeads * headDim) / tp, bytesPerElem);
+      const qUp = 2 * M * qLoraRank * qOutDim / tp;
+      const kvDown = 2 * M * H * (kvLoraRank + model.qkRopeHeadDim) / tp;
+      const kvUp = 2 * M * kvLoraRank * kvUpOutDim / tp;
+      flops = (qDown + qUp + kvDown + kvUp) * numLayers;
+      // Intensity: use the dominant matmul (qUp is largest for MLA)
+      intensity = gemmIntensity(M, qLoraRank, qOutDim / tp, bytesPerElem);
     } else {
       // Standard QKV
       const qkvFlops = 2 * M * K * N_q + 2 * 2 * M * K * N_kv;
@@ -166,7 +169,9 @@ export function computeTrainingRoofline(
   {
     const numHeadsPerGPU = numHeads / tp;
     const M_attn = S;
-    const K_attn = headDim;
+    const K_attn = (model.attentionType === 'mla' && model.qkNopeHeadDim && model.qkRopeHeadDim)
+      ? (model.qkNopeHeadDim + model.qkRopeHeadDim)
+      : headDim;
     const N_attn = S;
     const flops = numHeadsPerGPU * 2 * M_attn * K_attn * N_attn * mbs * numLayers;
 
@@ -175,7 +180,10 @@ export function computeTrainingRoofline(
 
     // Flash Attention reduces HBM traffic
     if (config.flashAttention) {
-      const faFactor = Math.min(2 * headDim * headDim / S, 8);
+      const faHeadDim = (model.attentionType === 'mla' && model.qkNopeHeadDim && model.qkRopeHeadDim)
+        ? (model.qkNopeHeadDim + model.qkRopeHeadDim)
+        : headDim;
+      const faFactor = Math.min(2 * faHeadDim * faHeadDim / S, 8);
       if (faFactor > 1) {
         attnBytes = attnBytes / faFactor;
       }
@@ -189,10 +197,11 @@ export function computeTrainingRoofline(
   // --- c) Attention Output (scores @ V + output projection) ---
   {
     const numHeadsPerGPU = numHeads / tp;
-    // scores @ V: batched (S, S) × (S, headDim)
-    const svFlops = numHeadsPerGPU * 2 * S * S * headDim * mbs * numLayers;
-    // output projection: (tokens, numHeads*headDim/tp) × (numHeads*headDim/tp, H)
-    const projN = (numHeads * headDim) / tp;
+    // scores @ V: batched (S, S) × (S, vDim)
+    const V_dim = (model.attentionType === 'mla' && model.vHeadDim) ? model.vHeadDim : headDim;
+    const svFlops = numHeadsPerGPU * 2 * S * S * V_dim * mbs * numLayers;
+    // output projection: (tokens, numHeads*vDim/tp) × (numHeads*vDim/tp, H)
+    const projN = (numHeads * V_dim) / tp;
     const outProjFlops = 2 * tokens * projN * H * numLayers;
     const flops = svFlops + outProjFlops;
 

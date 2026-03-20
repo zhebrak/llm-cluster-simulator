@@ -277,7 +277,7 @@ const INFERENCE_PRESETS: InferencePresetCase[] = [
     batchSize: 32, inputSeqLen: 1024, outputSeqLen: 512,
     weightPrecision: 'fp8', kvCachePrecision: 'fp8',
     flashAttention: true, tensorParallel: 8,
-    pinned: { ttft: 416.33, tpot: 14.434, throughputTps: 2098.7 },
+    pinned: { ttft: 386.0, tpot: 14.434, throughputTps: 2098.7 },
   },
   {
     name: 'LLaMA 3.3 70B (4× H100)',

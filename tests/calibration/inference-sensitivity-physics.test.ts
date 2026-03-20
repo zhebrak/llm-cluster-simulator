@@ -245,21 +245,22 @@ describe('Inference Physics Validation', () => {
     expect(prefill32k).toBeGreaterThan(twoP * 32768 * 1.25); // attention adds >25%
   });
 
-  it('MLA attention FLOPs use kvLoraRank, not hiddenSize', () => {
+  it('MLA attention FLOPs use standard head dims (qkNope+qkRope+vHead)', () => {
     const model = getModel('deepseek-v3', 4096)!;
     expect(model.attentionType).toBe('mla');
-    expect(model.kvLoraRank).toBeDefined();
+    expect(model.qkNopeHeadDim).toBeDefined();
+    expect(model.qkRopeHeadDim).toBeDefined();
+    expect(model.vHeadDim).toBeDefined();
 
     const twoP = 2 * (model.activeParams ?? model.totalParams);
     const attnFlops = decodeFLOPs(model, 4096) - twoP;
 
-    // MLA attention per layer: 2 * numHeads * (2*kvLoraRank + qkRopeHeadDim) * seqLen
-    // This should be smaller than standard MHA (4 * numHeads * headDim * seqLen)
-    const mlaPerLayer = 2 * model.numAttentionHeads * (2 * model.kvLoraRank! + model.qkRopeHeadDim!) * 4096;
+    // Standard (decompressed) MLA: 2 * nH * (qkNope + qkRope + vHead) * seqLen per layer
+    const mlaPerLayer = 2 * model.numAttentionHeads * (model.qkNopeHeadDim! + model.qkRopeHeadDim! + model.vHeadDim!) * 4096;
     const mhaPerLayer = 4 * model.numAttentionHeads * model.headDim * 4096;
 
-    // MLA attention should be similar to but different from MHA
-    expect(attnFlops).toBeGreaterThan(0);
+    // Verify simulator output matches expected standard formula
+    expect(attnFlops).toBeCloseTo(mlaPerLayer * model.numLayers, -3);
     // Verify MLA is actually different from MHA formula
     expect(mlaPerLayer).not.toBe(mhaPerLayer);
   });

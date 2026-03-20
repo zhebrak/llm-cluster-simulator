@@ -263,8 +263,9 @@ export function prefillFLOPs(model: ModelSpec, inputTokens: number): number {
   // Attention score FLOPs: QK^T + scores*V (not included in 2*activeParams)
   // Causal mask: token i attends to (i+1) positions, sum = S*(S+1)/2
   let attnPerLayerPerPosition: number;
-  if (model.attentionType === 'mla' && model.kvLoraRank && model.qkRopeHeadDim) {
-    attnPerLayerPerPosition = 2 * model.numAttentionHeads * (2 * model.kvLoraRank + model.qkRopeHeadDim);
+  if (model.attentionType === 'mla' && model.qkNopeHeadDim && model.qkRopeHeadDim && model.vHeadDim) {
+    // Standard (decompressed) MLA: Q@K^T uses (qkNope+qkRope), scores@V uses vHeadDim
+    attnPerLayerPerPosition = 2 * model.numAttentionHeads * (model.qkNopeHeadDim + model.qkRopeHeadDim + model.vHeadDim);
   } else {
     attnPerLayerPerPosition = 4 * model.numAttentionHeads * model.headDim;
   }
@@ -286,8 +287,9 @@ export function decodeFLOPs(model: ModelSpec, seqLen: number = 0): number {
   // Attention score FLOPs: QK^T + scores*V (not included in 2*activeParams)
   // Decode: single token attending to seqLen previous positions
   let attnPerLayer: number;
-  if (model.attentionType === 'mla' && model.kvLoraRank && model.qkRopeHeadDim) {
-    attnPerLayer = 2 * model.numAttentionHeads * (2 * model.kvLoraRank + model.qkRopeHeadDim) * seqLen;
+  if (model.attentionType === 'mla' && model.qkNopeHeadDim && model.qkRopeHeadDim && model.vHeadDim) {
+    // Standard (decompressed) MLA: Q@K^T uses (qkNope+qkRope), scores@V uses vHeadDim
+    attnPerLayer = 2 * model.numAttentionHeads * (model.qkNopeHeadDim + model.qkRopeHeadDim + model.vHeadDim) * seqLen;
   } else {
     attnPerLayer = 4 * model.numAttentionHeads * model.headDim * seqLen;
   }
