@@ -57,7 +57,7 @@ export function AppShell({ children }: AppShellProps) {
         <main className="flex-1 overflow-auto p-6 flex flex-col" style={{ scrollbarGutter: 'stable' }}>
           {children}
           <div className="mt-auto pt-8 pb-2 text-xs text-gray-500 text-right">
-            v1.1.0 · Alex Zhebrak · 2026
+            v1.1.1 · Alex Zhebrak · 2026
           </div>
         </main>
       </div>
