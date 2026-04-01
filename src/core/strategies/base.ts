@@ -408,10 +408,23 @@ export function computeOptimizerStepTime(
  */
 export function getSelectiveRecomputeFraction(model: ModelSpec): number {
   const h = model.hiddenSize;
-  const qDim = model.numAttentionHeads * model.headDim;
-  const kvDim = model.numKvHeads * model.headDim;
-  // Q, K, V, O projections: each is a matmul with 2*h*dim FLOPs per token
-  const attnLinearFLOPs = 2 * h * (2 * qDim + 2 * kvDim);
+  let attnLinearFLOPs: number;
+  if (model.attentionType === 'mla' && model.qLoraRank && model.kvLoraRank
+      && model.qkNopeHeadDim && model.qkRopeHeadDim && model.vHeadDim) {
+    // MLA two-stage projections: qA + qB + kvA + kvB + O
+    const nH = model.numAttentionHeads;
+    const qA = h * model.qLoraRank;
+    const qB = model.qLoraRank * nH * (model.qkNopeHeadDim + model.qkRopeHeadDim);
+    const kvA = h * (model.kvLoraRank + model.qkRopeHeadDim);
+    const kvB = model.kvLoraRank * nH * (model.qkNopeHeadDim + model.vHeadDim);
+    const O = nH * model.vHeadDim * h;
+    attnLinearFLOPs = 2 * (qA + qB + kvA + kvB + O);
+  } else {
+    const qDim = model.numAttentionHeads * model.headDim;
+    const kvDim = model.numKvHeads * model.headDim;
+    // Q, K, V, O projections: each is a matmul with 2*h*dim FLOPs per token
+    attnLinearFLOPs = 2 * h * (2 * qDim + 2 * kvDim);
+  }
 
   if (model.isMoE && model.numMoELayers && model.numMoELayers < model.numLayers) {
     // Mixed architecture: weighted average of dense and MoE layer fractions
@@ -520,10 +533,24 @@ export function estimateActivationMemory(
     ? model.numAttentionHeads * seqLength * bytesPerElement * microBatchSize
     : model.numAttentionHeads * seqLength * seqLength * bytesPerElement * microBatchSize * 2.5;
 
-  // GQA/MQA: K and V projections are smaller when numKvHeads < numAttentionHeads
-  // Use actual headDim (may differ from hiddenSize / numAttentionHeads for models like Qwen3)
-  const qDim = model.numAttentionHeads * model.headDim;
-  const kvDim = model.numKvHeads * model.headDim;
+  // Attention dimensions: Q, K+V, and attention output (O projection input)
+  let qDim: number, kvTotal: number, attnOutDim: number;
+  if (model.attentionType === 'mla' && model.qkNopeHeadDim && model.qkRopeHeadDim && model.vHeadDim) {
+    // MLA: decompressed activation tensors saved for backward
+    qDim = model.numAttentionHeads * (model.qkNopeHeadDim + model.qkRopeHeadDim);
+    // kvB output: single tensor combining K_nope and V (not separate K, V)
+    kvTotal = model.numAttentionHeads * (model.qkNopeHeadDim + model.vHeadDim);
+    // Attention output = concatenated value heads → O projection input
+    attnOutDim = model.numAttentionHeads * model.vHeadDim;
+  } else {
+    // GQA/MQA: K and V projections are smaller when numKvHeads < numAttentionHeads
+    qDim = model.numAttentionHeads * model.headDim;
+    kvTotal = 2 * model.numKvHeads * model.headDim; // separate K and V
+    // Attention output = concatenated value heads (nH*headDim), projected to hiddenSize by O.
+    // Equals hiddenSize for most models; differs for wider-attention architectures
+    // (Gemma 3, Qwen3 small, GLM-4.5/4.7, MiniMax, GPT-OSS, Ministral, Devstral).
+    attnOutDim = model.numAttentionHeads * model.headDim;
+  }
 
   // MLP intermediate coefficient: gated MLP (SwiGLU) saves gate + up + product (3I),
   // standard MLP (GeLU/ReLU) saves up + activation output (2I).
@@ -542,8 +569,8 @@ export function estimateActivationMemory(
   const sharedActivations = 3 * h * tokens * bytesPerElement;
 
   // Attention (discarded in selective, recomputed from x during backward):
-  //   LN1 output (h) + attn output (h) + QKV + attn scores + attn dropout mask
-  const attentionActivations = (2 * h + qDim + 2 * kvDim) * tokens * bytesPerElement
+  //   LN1 output (h) + attn output (attnOutDim) + Q + KV_decompressed + scores + dropout mask
+  const attentionActivations = (h + attnOutDim + qDim + kvTotal) * tokens * bytesPerElement
     + tokens  // attention dropout mask (1 byte each)
     + attentionScoreMemory;
 
