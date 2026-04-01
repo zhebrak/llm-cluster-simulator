@@ -1,5 +1,7 @@
 # LLM Cluster Simulator
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19365122.svg)](https://doi.org/10.5281/zenodo.19365122)
+
 Analytical simulator for distributed LLM training and inference. Estimates MFU, memory, throughput, and cost for any model–cluster–parallelism combination without provisioning a single GPU. All computation happens client-side; no backend, no data leaves your browser.
 
 
@@ -93,6 +95,21 @@ npm run build
 ```
 
 **Stack:** React 19 · TypeScript · Vite 7 · Tailwind CSS 4 · Zustand · Vitest
+
+## Citation
+
+If you use this simulator in your work, please cite:
+
+```bibtex
+@misc{zhebrak2026llmclustersim,
+  author       = {Zhebrak, Alex},
+  title        = {{LLM Cluster Simulator}: Interactive Distributed Training and Inference Planning},
+  year         = {2026},
+  url          = {https://github.com/zhebrak/llm-cluster-simulator},
+  doi          = {10.5281/zenodo.19365122},
+  note         = {Browser-based simulator for GPU cluster parallelism strategies, calibrated against published benchmarks from Meta, DeepSeek, and NVIDIA}
+}
+```
 
 ## License
 

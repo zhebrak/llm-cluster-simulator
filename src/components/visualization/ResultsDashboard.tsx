@@ -39,6 +39,7 @@ import { GPUGridPanel, InferenceGPUGridPanel } from './GPUGrid.tsx';
 
 import { exportConfigToJSON, type ExportableConfig, type ExportableInferenceConfig } from '../../utils/export.ts';
 import { toExponent, buildShareURL } from '../../utils/share.ts';
+import { copyToClipboard } from '../../utils/clipboard.ts';
 import { getGPUHourlyRate, calculateCostPerMillionTokens } from '../../core/cost/index.ts';
 import { ShareCard, type ShareCardProps } from './ShareCard.tsx';
 import { copyImageToClipboard, downloadImage } from '../../utils/png-export.ts';
@@ -128,18 +129,6 @@ function SimulationDisclaimer() {
       </div>
     </div>
   );
-}
-
-// Textarea fallback for clipboard copy in non-HTTPS contexts
-function copyFallback(text: string): void {
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textarea);
 }
 
 /** Export button: click copies PNG to clipboard, chevron dropdown offers "Download PNG" and "Copy JSON". */
@@ -582,17 +571,9 @@ function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, 
   }, [exporting, modelName, gpuName]);
 
   const handleShare = () => {
-    const url = buildShareURL();
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(url).then(() => {
-        setShareCopied(true);
-        setTimeout(() => setShareCopied(false), 2000);
-      }).catch(() => { copyFallback(url); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); });
-    } else {
-      copyFallback(url);
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
-    }
+    copyToClipboard(buildShareURL());
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
   };
   const handleCopyConfig = () => {
     const config = useConfigStore.getState();
@@ -649,23 +630,9 @@ function InferenceResults({ result, gpuMemoryGB, modelName, modelSpec, gpuName, 
       },
     };
     const json = exportConfigToJSON(exportConfig);
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = json;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      navigator.clipboard?.writeText(json).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    }
+    copyToClipboard(json);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -1180,17 +1147,9 @@ function TrainingResults({
   }, [exporting, modelName, gpuName]);
 
   const handleShare = () => {
-    const url = buildShareURL();
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(url).then(() => {
-        setShareCopied(true);
-        setTimeout(() => setShareCopied(false), 2000);
-      }).catch(() => { copyFallback(url); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); });
-    } else {
-      copyFallback(url);
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
-    }
+    copyToClipboard(buildShareURL());
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
   };
   const handleCopyConfig = () => {
     // Use snapshot (frozen at simulation time) for all config fields.
@@ -1292,25 +1251,9 @@ function TrainingResults({
       },
     };
     const json = exportConfigToJSON(exportConfig);
-    // Fallback for non-HTTPS contexts where navigator.clipboard is unavailable
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = json;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Last resort: navigator.clipboard (works on HTTPS)
-      navigator.clipboard?.writeText(json).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    }
+    copyToClipboard(json);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
