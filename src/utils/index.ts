@@ -2,6 +2,8 @@
  * Utility exports
  */
 
+export { copyToClipboard } from './clipboard.ts';
+
 export {
   type ExportableConfig,
   exportConfigToJSON,

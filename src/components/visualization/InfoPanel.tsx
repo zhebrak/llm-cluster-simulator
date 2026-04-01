@@ -12,6 +12,7 @@ import { getSimulationMetrics, type SimulationMetrics } from '../../core/simulat
 import { modelRegistry } from '../../core/models/registry.ts';
 import { computeLoraTrainableParams, NF4_BYTES_PER_PARAM } from '../../core/strategies/lora.ts';
 import { GPUGridPanel, InferenceGPUGridPanel } from './GPUGrid.tsx';
+import { copyToClipboard } from '../../utils/clipboard.ts';
 
 interface InfoCardProps {
   title: string;
@@ -74,24 +75,9 @@ export function ModelSpecPanel() {
       ? customModels[modelId]
       : modelRegistry.getConfig(modelId);
     if (!cfg) return;
-    const text = JSON.stringify(cfg, null, 2);
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      navigator.clipboard?.writeText(text).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    }
+    copyToClipboard(JSON.stringify(cfg, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const copyAction = (

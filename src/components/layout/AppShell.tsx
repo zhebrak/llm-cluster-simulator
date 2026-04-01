@@ -5,6 +5,7 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronsRight, Monitor, X } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip.tsx';
+import { CitationModal } from '../ui/CitationModal.tsx';
 import { Header } from './Header.tsx';
 import { Sidebar } from './Sidebar.tsx';
 
@@ -15,6 +16,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [smallScreenDismissed, setSmallScreenDismissed] = useState(false);
+  const [showCitation, setShowCitation] = useState(false);
 
   return (
     <div className="flex flex-col h-dvh bg-gray-950">
@@ -57,8 +59,15 @@ export function AppShell({ children }: AppShellProps) {
         <main className="flex-1 overflow-auto p-6 flex flex-col" style={{ scrollbarGutter: 'stable' }}>
           {children}
           <div className="mt-auto pt-8 pb-2 text-xs text-gray-500 text-right">
-            v1.1.2 · Alex Zhebrak · 2026
+            v1.1.2 · Alex Zhebrak · 2026 ·{' '}
+            <button
+              onClick={() => setShowCitation(true)}
+              className="text-gray-500 hover:text-gray-300 underline decoration-dotted underline-offset-2 cursor-pointer transition-colors"
+            >
+              Cite
+            </button>
           </div>
+          {showCitation && <CitationModal onClose={() => setShowCitation(false)} />}
         </main>
       </div>
     </div>
