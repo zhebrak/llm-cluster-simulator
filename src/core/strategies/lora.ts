@@ -64,8 +64,10 @@ export function computeLoraTrainableParams(
     d_v = model.numKvHeads * model.headDim;
   }
 
-  // O projection input = attention output = numAttentionHeads × headDim (always, including MLA)
-  const d_o_in = model.numAttentionHeads * model.headDim;
+  // O projection input = attention output = numAttentionHeads × vHeadDim (MLA) or headDim
+  const d_o_in = model.attentionType === 'mla' && model.vHeadDim
+    ? model.numAttentionHeads * model.vHeadDim
+    : model.numAttentionHeads * model.headDim;
 
   // Per-layer attention adapter params
   let perLayerAttnParams: number;
@@ -161,8 +163,10 @@ export function computeLoraParamsPerRank(
     d_v = model.numKvHeads * model.headDim;
   }
 
-  // O projection input = attention output = numAttentionHeads × headDim (always, including MLA)
-  const d_o_in = model.numAttentionHeads * model.headDim;
+  // O projection input = attention output = numAttentionHeads × vHeadDim (MLA) or headDim
+  const d_o_in = model.attentionType === 'mla' && model.vHeadDim
+    ? model.numAttentionHeads * model.vHeadDim
+    : model.numAttentionHeads * model.headDim;
 
   // Per-layer per-rank attention adapter params
   let perLayerAttnPerRank: number;

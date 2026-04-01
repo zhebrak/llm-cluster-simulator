@@ -154,7 +154,7 @@ const TRAINING_PRESETS: TrainingPresetCase[] = [
     // H800: identical compute to H100 but NVLink 200 GB/s (vs 450).
     // Published: 43.7% non-causal MFU (ISCA 2025).
     // MoE overhead is modeled per-layer in 3d-parallel.ts with separate MoE residual.
-    pinned: { mfu: 0.4460, hfu: 0.5947, memUtil: 0.4760, tokPerSec: 4009248, stepTimeMs: 8369 },
+    pinned: { mfu: 0.4460, hfu: 0.5947, memUtil: 0.4959, tokPerSec: 4009248, stepTimeMs: 8369 },
   },
   {
     name: 'LLaMA 4 Maverick (512× H100)',

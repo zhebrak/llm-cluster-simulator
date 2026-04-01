@@ -280,10 +280,17 @@ export class ThreeDParallelStrategy extends ParallelismStrategy {
     if (this.config.sequenceParallel && tp > 1) {
       activationMultiplier = 1 / tp;
     } else if (tp > 1) {
-      // TP without SP: TP-sharded (qDim + 2*kvDim + h + mlpInterm) vs replicated (4h for LN/residuals)
+      // TP without SP: TP-sharded (Q + KV + attnOut + mlpInterm) vs replicated (4h for LN/residuals)
       const mlpIntermCoeff = model.gatedMLP ? 3 : 2;
-      const sharded = (model.numAttentionHeads * model.headDim) + 2 * (model.numKvHeads * model.headDim)
-        + model.hiddenSize + mlpIntermCoeff * model.intermediateSize;
+      let attnSharded: number;
+      if (model.attentionType === 'mla' && model.qkNopeHeadDim && model.qkRopeHeadDim && model.vHeadDim) {
+        attnSharded = model.numAttentionHeads * (model.qkNopeHeadDim + model.qkRopeHeadDim)
+          + model.numAttentionHeads * (model.qkNopeHeadDim + model.vHeadDim)
+          + model.numAttentionHeads * model.vHeadDim;
+      } else {
+        attnSharded = 2 * (model.numAttentionHeads * model.headDim) + 2 * (model.numKvHeads * model.headDim);
+      }
+      const sharded = attnSharded + mlpIntermCoeff * model.intermediateSize;
       const replicated = 4 * model.hiddenSize;
       activationMultiplier = (sharded / tp + replicated) / (sharded + replicated);
     } else {

@@ -770,3 +770,32 @@ describe('LoRA Backward Multiplier with storedLayers', () => {
     expect(multHalf).toBeCloseTo(halfStored, 1);
   });
 });
+
+describe('MLA LoRA', () => {
+  it('GLM-5 LoRA O projection uses vHeadDim (256), not headDim (64)', () => {
+    const glm5 = getModel('glm5', 2048)!;
+    const totalParams = computeLoraTrainableParams(glm5, 16, 'q_k_v_o');
+    const perRankParams = computeLoraParamsPerRank(glm5, 16, 'q_k_v_o', 1, 1);
+    expect(totalParams).toBe(perRankParams); // tp=1, pp=1
+
+    // MLA: d_q=qLoraRank=2048, d_k=d_v=kvLoraRank=512, d_o_in=nH*vHeadDim=64*256=16384
+    const d = glm5.hiddenSize; // 6144
+    const r = 16;
+    const expectedAttnPerLayer = r * (d + 2048) + r * (d + 512) + r * (d + 512) + r * (16384 + d);
+    const numLayers = glm5.numLayers; // 78
+    // q_k_v_o: attention adapters on all layers, no MLP adapters
+    const expectedTotal = numLayers * expectedAttnPerLayer;
+    expect(totalParams).toBe(expectedTotal);
+  });
+
+  it('GLM-4.7-Flash LoRA uses MLA dimensions', () => {
+    const model = getModel('glm4.7-flash', 2048)!;
+    const totalParams = computeLoraTrainableParams(model, 16, 'q_k_v_o');
+    // MLA: d_q=qLoraRank=768, d_k=d_v=kvLoraRank=512, d_o_in=nH*vHeadDim=20*256=5120
+    const d = model.hiddenSize; // 2048
+    const r = 16;
+    const expectedPerLayer = r * (d + 768) + r * (d + 512) + r * (d + 512) + r * (5120 + d);
+    const expectedTotal = model.numLayers * expectedPerLayer;
+    expect(totalParams).toBe(expectedTotal);
+  });
+});

@@ -3,6 +3,7 @@ import { getModel } from '../../src/core/models/index.ts';
 import {
   estimateActivationMemory,
   getEffectiveBackwardMultiplier,
+  getSelectiveRecomputeFraction,
   solveMaxStoredLayers,
 } from '../../src/core/strategies/base.ts';
 import { getValidatedSimulationMetrics } from '../helpers/validated-metrics.ts';
@@ -123,6 +124,51 @@ describe('Stored-layers selective AC', () => {
       ));
       // All 64 layers should fit (no budget pressure)
       expect(metrics.resolvedStoredLayers).toBe(64);
+    });
+  });
+
+  describe('MLA models', () => {
+    const v3 = getModel('deepseek-v3', 2048)!;
+    const glm5 = getModel('glm5', 2048)!;
+    const glm47f = getModel('glm4.7-flash', 2048)!;
+
+    it('DeepSeek V3 selective recompute fraction ~32%', () => {
+      const f = getSelectiveRecomputeFraction(v3);
+      expect(f).toBeGreaterThan(0.28);
+      expect(f).toBeLessThan(0.36);
+    });
+
+    it('GLM-5 selective recompute fraction ~33%', () => {
+      const f = getSelectiveRecomputeFraction(glm5);
+      expect(f).toBeGreaterThan(0.28);
+      expect(f).toBeLessThan(0.38);
+    });
+
+    it('GLM-4.7-Flash selective recompute fraction ~32%', () => {
+      const f = getSelectiveRecomputeFraction(glm47f);
+      expect(f).toBeGreaterThan(0.25);
+      expect(f).toBeLessThan(0.40);
+    });
+
+    it('V3 backward multiplier with selective AC ~2.32', () => {
+      const mult = getEffectiveBackwardMultiplier(v3, true, 'selective');
+      expect(mult).toBeGreaterThan(2.28);
+      expect(mult).toBeLessThan(2.36);
+    });
+
+    it('GLM-5 activation memory uses MLA dimensions', () => {
+      const mlaMem = estimateActivationMemory(glm5, 2048, 1, 'bf16', true, true, 1, 'full');
+      // MLA decompressed dims produce ~5.1 GB; GQA fallback with headDim=64 would give ~3.5 GB.
+      // Bound set between the two to catch regressions where MLA branch is not taken.
+      expect(mlaMem).toBeGreaterThan(4.0e9);
+    });
+
+    it('wider-attention models use nH*headDim for attnOutDim', () => {
+      // GLM-4.5-Air: nH=96, headDim=128, h=4096. nH*headDim=12288 (3x hiddenSize).
+      // With nH*headDim: ~2.25 GB. With old hiddenSize formula: ~2.03 GB.
+      const air = getModel('glm4.5-air', 2048)!;
+      const airMem = estimateActivationMemory(air, 2048, 1, 'bf16', true, true, 1, 'full');
+      expect(airMem).toBeGreaterThan(2.1e9);
     });
   });
 });

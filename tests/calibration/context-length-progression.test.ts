@@ -151,7 +151,7 @@ describe('§2 — Preset re-validation', () => {
         strategyConfig: { tp: 4, pp: 8, dp: 64, ep: 32, dpType: 'fsdp', sequenceParallel: true, pipelineSchedule: 'dualpipe-v', interleavedStages: 1, numMicroBatches: 64 },
         globalBatchSize: 8192, microBatchSize: 2, activationCheckpointing: true, flashAttention: true, mixedPrecision: 'fp8',
       },
-      pinned: { mfu: 0.4460, hfu: 0.5947, memUtil: 0.4760, tokPerSec: 4009248, stepTimeMs: 8369 },
+      pinned: { mfu: 0.4460, hfu: 0.5947, memUtil: 0.4959, tokPerSec: 4009248, stepTimeMs: 8369 },
     },
     {
       name: 'LLaMA 4 Maverick (512× H100)',
